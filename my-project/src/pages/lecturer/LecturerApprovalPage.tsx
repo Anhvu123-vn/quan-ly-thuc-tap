@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   ClipboardCheck,
@@ -12,46 +12,130 @@ import {
   XCircle,
   Clock,
   AlertCircle,
+  Loader2,
+  RefreshCw,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/shared/Badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ApprovalModal } from "@/components/lecturer/ApprovalModal";
-import { mockApprovalItems, type ApprovalItem } from "@/data/mockData";
+import { api } from "@/services/api";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
+import { useAuth } from "@/contexts/AuthContext";
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
+
+interface ApprovalItem {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  studentAvatar?: string;
+  company: string;
+  position: string;
+  level: "department" | "lecturer" | "registrar";
+  submittedDate: string;
+  status: "pending" | "in_progress" | "approved" | "rejected";
+  comment?: string;
+  reviewerName?: string;
+  reviewedAt?: string;
+}
+
+// Transform API response to component format
+function transformApprovalItem(item: any): ApprovalItem {
+  return {
+    id: item.id,
+    studentId: item.studentId,
+    studentName: item.student?.name || "Unknown Student",
+    studentEmail: item.student?.email || "",
+    studentAvatar: item.student?.avatar,
+    company: item.company?.name || "Unknown Company",
+    position: item.position?.title || "Unknown Position",
+    level: item.level,
+    submittedDate: item.createdAt ? new Date(item.createdAt).toLocaleDateString("vi-VN") : "",
+    status: item.status,
+    comment: item.comments,
+    reviewerName: item.reviewer?.name,
+    reviewedAt: item.reviewedAt ? new Date(item.reviewedAt).toLocaleDateString("vi-VN") : undefined,
+  };
+}
 
 export function LecturerApprovalPage() {
-  const [items, setItems] = useState<ApprovalItem[]>(
-    mockApprovalItems.map((item) => ({
-      ...item,
-      level: item.level === "faculty" ? "faculty" : "supervisor",
-    }))
-  );
+  const { user } = useAuth();
+  const [items, setItems] = useState<ApprovalItem[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [levelFilter, setLevelFilter] = useState<"all" | "faculty" | "supervisor">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "departmentApproved" | "approved" | "rejected">("all");
+  const [levelFilter, setLevelFilter] = useState<"all" | "department" | "lecturer" | "registrar">("all");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "in_progress" | "approved" | "rejected">("all");
   const [currentPage, setCurrentPage] = useState(1);
+  const [totalItems, setTotalItems] = useState(0);
 
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [modalItem, setModalItem] = useState<ApprovalItem | null>(null);
   const [modalType, setModalType] = useState<"approve" | "reject">("approve");
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const fetchApprovals = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    
+    try {
+      const params: any = {
+        page: currentPage,
+        limit: ITEMS_PER_PAGE,
+      };
+      
+      if (statusFilter !== "all") {
+        params.status = statusFilter;
+      }
+      if (levelFilter !== "all") {
+        params.level = levelFilter;
+      }
+
+      const response = await api.getApprovals(params);
+      const data = response?.data || response || [];
+      const meta = response?.meta;
+      
+      const transformedItems = Array.isArray(data) 
+        ? data.map(transformApprovalItem)
+        : [];
+      
+      setItems(transformedItems);
+      if (meta) {
+        setTotalItems(meta.total || transformedItems.length);
+      } else {
+        setTotalItems(transformedItems.length);
+      }
+    } catch (err) {
+      console.error("Failed to fetch approvals:", err);
+      setError("Không thể tải danh sách phê duyệt. Vui lòng thử lại.");
+      setItems([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [currentPage, statusFilter, levelFilter]);
+
+  useEffect(() => {
+    fetchApprovals();
+  }, [fetchApprovals]);
 
   const filteredItems = items.filter((item) => {
-    const matchesSearch =
-      item.studentName.toLowerCase().includes(search.toLowerCase()) ||
-      item.company.toLowerCase().includes(search.toLowerCase()) ||
-      item.position.toLowerCase().includes(search.toLowerCase());
-    const matchesLevel = levelFilter === "all" || item.level === levelFilter;
-    const matchesStatus = statusFilter === "all" || item.status === statusFilter;
-    return matchesSearch && matchesLevel && matchesStatus;
+    if (!search) return true;
+    const searchLower = search.toLowerCase();
+    return (
+      item.studentName.toLowerCase().includes(searchLower) ||
+      item.company.toLowerCase().includes(searchLower) ||
+      item.position.toLowerCase().includes(searchLower) ||
+      item.studentEmail.toLowerCase().includes(searchLower)
+    );
   });
 
-  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE);
+  const totalPages = Math.ceil(filteredItems.length / ITEMS_PER_PAGE) || 1;
   const paginatedItems = filteredItems.slice(
     (currentPage - 1) * ITEMS_PER_PAGE,
     currentPage * ITEMS_PER_PAGE
@@ -71,18 +155,38 @@ export function LecturerApprovalPage() {
     setModalOpen(true);
   };
 
-  const handleConfirm = (id: string, comment: string) => {
-    setItems((prev) =>
-      prev.map((i) =>
-        i.id === id
-          ? {
-              ...i,
-              status: modalType === "approve" ? ("approved" as const) : ("rejected" as const),
-              comment,
-            }
-          : i
-      )
-    );
+  const handleConfirm = async (id: string, comment: string) => {
+    setIsSubmitting(true);
+    try {
+      const newStatus = modalType === "approve" ? "approved" : "rejected";
+      await api.reviewApproval(id, { status: newStatus, comment });
+      
+      // Update local state
+      setItems((prev) =>
+        prev.map((i) =>
+          i.id === id
+            ? {
+                ...i,
+                status: newStatus as ApprovalItem["status"],
+                comment,
+                reviewerName: user?.name,
+                reviewedAt: new Date().toLocaleDateString("vi-VN"),
+              }
+            : i
+        )
+      );
+      
+      toast.success(
+        modalType === "approve" 
+          ? "Đã phê duyệt đơn thực tập!" 
+          : "Đã từ chối đơn thực tập!"
+      );
+    } catch (err) {
+      console.error("Failed to review approval:", err);
+      toast.error("Không thể xử lý. Vui lòng thử lại.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const getStatusBadge = (status: ApprovalItem["status"]) => {
@@ -91,10 +195,11 @@ export function LecturerApprovalPage() {
         return <Badge variant="success">Đã duyệt</Badge>;
       case "rejected":
         return <Badge variant="danger">Từ chối</Badge>;
-      case "departmentApproved":
-        return <Badge variant="purple">Chờ GV duyệt</Badge>;
+      case "in_progress":
+        return <Badge variant="info">Đang xử lý</Badge>;
+      case "pending":
       default:
-        return <Badge variant="warning">Chờ cấp khoa</Badge>;
+        return <Badge variant="warning">Chờ duyệt</Badge>;
     }
   };
 
@@ -104,10 +209,68 @@ export function LecturerApprovalPage() {
         return <CheckCircle2 className="h-4 w-4 text-green-500" />;
       case "rejected":
         return <XCircle className="h-4 w-4 text-red-500" />;
+      case "in_progress":
+        return <Clock className="h-4 w-4 text-blue-500" />;
       default:
         return <Clock className="h-4 w-4 text-amber-500" />;
     }
   };
+
+  const getLevelBadge = (level: ApprovalItem["level"]) => {
+    switch (level) {
+      case "department":
+        return <Badge variant="default">Cấp Khoa</Badge>;
+      case "lecturer":
+        return <Badge variant="secondary">GV Hướng dẫn</Badge>;
+      case "registrar":
+        return <Badge variant="purple">Phòng Đào tạo</Badge>;
+      default:
+        return <Badge variant="default">{level}</Badge>;
+    }
+  };
+
+  const formatDate = (dateStr: string) => {
+    if (!dateStr) return "-";
+    try {
+      return new Date(dateStr).toLocaleDateString("vi-VN", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      });
+    } catch {
+      return dateStr;
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4">
+            <Loader2 className="h-8 w-8 text-indigo-500 animate-spin" />
+            <p className="text-slate-500">Đang tải danh sách phê duyệt...</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="max-w-7xl mx-auto space-y-6">
+        <div className="flex items-center justify-center min-h-[400px]">
+          <div className="flex flex-col items-center gap-4 text-center">
+            <AlertCircle className="h-12 w-12 text-red-400" />
+            <p className="text-slate-600">{error}</p>
+            <Button onClick={fetchApprovals}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Thử lại
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
@@ -119,11 +282,17 @@ export function LecturerApprovalPage() {
             Xem xét và xử lý các đơn ứng tuyển của sinh viên
           </p>
         </div>
-        {pendingCount > 0 && (
-          <Badge variant="warning" size="md">
-            {pendingCount} đơn chờ duyệt
-          </Badge>
-        )}
+        <div className="flex items-center gap-3">
+          {pendingCount > 0 && (
+            <Badge variant="warning" size="md">
+              {pendingCount} đơn chờ duyệt
+            </Badge>
+          )}
+          <Button variant="outline" size="sm" onClick={fetchApprovals}>
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Làm mới
+          </Button>
+        </div>
       </div>
 
       {/* Data Table Card */}
@@ -134,7 +303,7 @@ export function LecturerApprovalPage() {
               <ClipboardCheck className="h-4 w-4 text-indigo-500" />
               Danh sách đơn ứng tuyển
               <span className="ml-1 text-sm font-normal text-slate-400">
-                ({filteredItems.length} đơn)
+                ({totalItems} đơn)
               </span>
             </CardTitle>
 
@@ -165,8 +334,9 @@ export function LecturerApprovalPage() {
                   className="h-10 rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="all">Tất cả cấp</option>
-                  <option value="faculty">Cấp Khoa</option>
-                  <option value="supervisor">GV Hướng dẫn</option>
+                  <option value="department">Cấp Khoa</option>
+                  <option value="lecturer">GV Hướng dẫn</option>
+                  <option value="registrar">Phòng Đào tạo</option>
                 </select>
               </div>
 
@@ -182,8 +352,8 @@ export function LecturerApprovalPage() {
                   className="h-10 rounded-md border border-slate-200 bg-white pl-9 pr-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="all">Tất cả trạng thái</option>
-                  <option value="pending">Chờ cấp khoa</option>
-                  <option value="departmentApproved">Chờ GV duyệt</option>
+                  <option value="pending">Chờ duyệt</option>
+                  <option value="in_progress">Đang xử lý</option>
                   <option value="approved">Đã duyệt</option>
                   <option value="rejected">Từ chối</option>
                 </select>
@@ -195,7 +365,7 @@ export function LecturerApprovalPage() {
         <CardContent className="px-2 sm:px-6">
           {/* Table */}
           <div className="overflow-x-auto -mx-2 sm:mx-0">
-            <table className="w-full min-w-[700px]">
+            <table className="w-full min-w-[800px]">
               <thead>
                 <tr className="border-b border-slate-100">
                   <th className="pb-3 text-left text-xs font-semibold uppercase tracking-wider text-slate-400 px-4 sm:px-0">
@@ -243,12 +413,17 @@ export function LecturerApprovalPage() {
                       {/* Student */}
                       <td className="py-3.5 px-4 sm:px-0">
                         <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8 shrink-0">
+                          <Avatar className="h-9 w-9 shrink-0">
+                            {item.studentAvatar ? (
+                              <AvatarImage src={item.studentAvatar} alt={item.studentName} />
+                            ) : null}
                             <AvatarFallback className="text-xs bg-indigo-100 text-indigo-700 font-semibold">
                               {item.studentName
                                 .split(" ")
                                 .map((n) => n[0])
-                                .join("")}
+                                .join("")
+                                .slice(0, 2)
+                                .toUpperCase()}
                             </AvatarFallback>
                           </Avatar>
                           <div className="min-w-0">
@@ -276,18 +451,13 @@ export function LecturerApprovalPage() {
 
                       {/* Level */}
                       <td className="py-3.5 px-4 sm:px-0">
-                        <Badge
-                          variant={item.level === "faculty" ? "default" : "secondary"}
-                          size="sm"
-                        >
-                          {item.level === "faculty" ? "Cấp Khoa" : "GV HD"}
-                        </Badge>
+                        {getLevelBadge(item.level)}
                       </td>
 
                       {/* Submitted Date */}
                       <td className="py-3.5 px-4 sm:px-0">
                         <span className="text-sm text-slate-500">
-                          {item.submittedDate}
+                          {formatDate(item.submittedDate)}
                         </span>
                       </td>
 
@@ -301,7 +471,7 @@ export function LecturerApprovalPage() {
 
                       {/* Actions */}
                       <td className="py-3.5 px-4 sm:px-0 text-right">
-                        {item.status === "departmentApproved" ? (
+                        {item.status === "pending" ? (
                           <div className="flex items-center justify-end gap-1.5">
                             <Button
                               size="sm"
@@ -309,7 +479,7 @@ export function LecturerApprovalPage() {
                               className="h-8 px-3 bg-emerald-500 hover:bg-emerald-600 text-white text-xs gap-1"
                             >
                               <Check className="h-3.5 w-3.5" />
-                              Phê duyệt
+                              Duyệt
                             </Button>
                             <Button
                               size="sm"
@@ -321,25 +491,17 @@ export function LecturerApprovalPage() {
                               Từ chối
                             </Button>
                           </div>
-                        ) : item.status === "pending" ? (
-                          <div className="flex items-center gap-1.5 justify-end">
-                            <Badge
-                              variant="warning"
-                              size="sm"
-                              className="gap-1"
-                              title="Đơn đang chờ phê duyệt cấp khoa trước khi bạn có thể xử lý"
-                            >
-                              <AlertCircle className="h-3 w-3" />
-                              Chờ cấp khoa
-                            </Badge>
-                          </div>
                         ) : item.comment ? (
-                          <p
-                            className="text-xs text-slate-400 italic max-w-[200px] text-right truncate"
-                            title={item.comment}
-                          >
-                            "{item.comment}"
-                          </p>
+                          <div className="max-w-[200px]">
+                            <p className="text-xs text-slate-500 italic text-right line-clamp-2" title={item.comment}>
+                              "{item.comment}"
+                            </p>
+                            {item.reviewerName && (
+                              <p className="text-xs text-slate-400 text-right mt-1">
+                                - {item.reviewerName}
+                              </p>
+                            )}
+                          </div>
                         ) : (
                           <span className="text-xs text-slate-300">—</span>
                         )}
@@ -352,7 +514,7 @@ export function LecturerApprovalPage() {
           </div>
 
           {/* Pagination */}
-          {totalPages > 0 && (
+          {totalPages > 1 && (
             <div className="mt-4 flex flex-col sm:flex-row items-center justify-between gap-3 pt-4 border-t border-slate-100">
               <p className="text-sm text-slate-400">
                 Hiển thị {(currentPage - 1) * ITEMS_PER_PAGE + 1}–
@@ -394,6 +556,7 @@ export function LecturerApprovalPage() {
         item={modalItem}
         onConfirm={handleConfirm}
         type={modalType}
+        isSubmitting={isSubmitting}
       />
     </div>
   );

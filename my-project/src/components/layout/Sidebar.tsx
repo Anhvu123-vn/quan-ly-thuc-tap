@@ -1,4 +1,4 @@
-import { NavLink } from "react-router-dom";
+import { NavLink, useNavigate } from "react-router-dom";
 import { 
   User, Settings, LogOut, Briefcase, Shield, Sparkles,
   BookOpen, BarChart3, ClipboardCheck, MessageSquare, Star,
@@ -62,8 +62,14 @@ const navItemsByRole: Record<string, NavItem[]> = {
 
 export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
   const { user, logout } = useAuth();
+  const navigate = useNavigate();
   const role = user?.role || "student";
   const navItems = navItemsByRole[role] || navItemsByRole.student;
+
+  const handleLogout = () => {
+    logout();
+    navigate("/login");
+  };
 
   return (
     <>
@@ -218,7 +224,7 @@ export function Sidebar({ isCollapsed, onToggle }: SidebarProps) {
               "w-full text-slate-600 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all duration-200",
               isCollapsed && "lg:justify-center lg:px-0"
             )}
-            onClick={logout}
+            onClick={handleLogout}
           >
             <LogOut className="h-4 w-4 shrink-0" aria-hidden="true" />
             <AnimatePresence mode="wait">

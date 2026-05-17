@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
 import {
   Users,
@@ -11,44 +11,157 @@ import {
   ArrowRight,
   FileText,
   TrendingUp,
+  RefreshCw,
+  Loader2,
+  AlertCircle,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/shared/Badge";
 import { Button } from "@/components/ui/button";
-import { mockApprovalItems, mockLogEntries } from "@/data/mockData";
-import type { StatCard } from "@/types";
+import { api } from "@/services/api";
 import { useNavigate } from "react-router-dom";
 import { cn } from "@/lib/utils";
 
+interface Stats {
+  totalStudents: number;
+  totalApplications: number;
+  pendingApprovals: number;
+  approvedThisMonth: number;
+}
+
+interface ApprovalItem {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  studentAvatar?: string;
+  company: string;
+  position: string;
+  status: string;
+  submittedDate: string;
+}
+
+interface LogEntry {
+  id: string;
+  studentId: string;
+  studentName: string;
+  week: number;
+  date: string;
+  completedWork: string;
+  status: string;
+}
+
 export function LecturerDashboardPage() {
   const navigate = useNavigate();
+  const [stats, setStats] = useState<Stats>({
+    totalStudents: 0,
+    totalApplications: 0,
+    pendingApprovals: 0,
+    approvedThisMonth: 0,
+  });
+  const [pendingApprovals, setPendingApprovals] = useState<ApprovalItem[]>([]);
+  const [recentLogs, setRecentLogs] = useState<LogEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  // Stat cards data
-  const stats: StatCard[] = [
+  const fetchDashboardData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+
+    try {
+      // Fetch all data in parallel
+      const [approvalsRes, logsRes] = await Promise.allSettled([
+        api.getApprovals({ status: "pending", limit: 5 }),
+        api.getStudentsLogs(),
+      ]);
+
+      // Process approvals
+      if (approvalsRes.status === "fulfilled") {
+        const approvalsData = approvalsRes.value?.data || approvalsRes.value || [];
+        setPendingApprovals(
+          approvalsData.slice(0, 5).map((item: any) => ({
+            id: item.id,
+            studentId: item.studentId,
+            studentName: item.student?.name || "Unknown",
+            studentEmail: item.student?.email || "",
+            studentAvatar: item.student?.avatar,
+            company: item.company?.name || "Unknown",
+            position: item.position?.title || "Unknown",
+            status: item.status,
+            submittedDate: item.createdAt
+              ? new Date(item.createdAt).toLocaleDateString("vi-VN")
+              : "",
+          }))
+        );
+        setStats((prev) => ({ ...prev, pendingApprovals: approvalsData.length }));
+      }
+
+      // Process logs
+      if (logsRes.status === "fulfilled") {
+        const logsData = logsRes.value?.data || logsRes.value || [];
+        setRecentLogs(
+          logsData.slice(0, 6).map((log: any) => ({
+            id: log.id,
+            studentId: log.studentId,
+            studentName: log.student?.name || "Unknown",
+            week: log.weekNumber || log.week || 1,
+            date: log.createdAt || log.entryDate || "",
+            completedWork: log.completedWork || "",
+            status: log.status || "pending",
+          }))
+        );
+      }
+
+      // Fetch additional stats from stats endpoint
+      try {
+        const statsRes = await api.getStats();
+        const statsData = statsRes?.data || statsRes || {};
+        setStats((prev) => ({
+          ...prev,
+          totalStudents: statsData.totalStudents || statsData.totalUsers || 0,
+          totalApplications: statsData.totalApplications || 0,
+          approvedThisMonth: statsData.approvedThisMonth || 0,
+        }));
+      } catch {
+        // Stats endpoint might not have all data, use what we have
+      }
+    } catch (err) {
+      console.error("Failed to fetch dashboard data:", err);
+      setError("Không thể tải dữ liệu dashboard");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDashboardData();
+  }, [fetchDashboardData]);
+
+  const statCards = [
     {
-      title: "Tổng sinh viên",
-      value: "124",
-      change: "+8",
-      trend: "up",
+      title: "Sinh viên theo dõi",
+      value: stats.totalStudents || "-",
+      change: stats.totalApplications > 0 ? `${stats.totalApplications} đơn` : undefined,
+      trend: "neutral" as const,
     },
     {
       title: "Đơn chờ duyệt",
-      value: mockApprovalItems.filter((i) => i.status === "pending").length,
-      change: "Cần xử lý",
-      trend: "neutral",
+      value: stats.pendingApprovals,
+      change: stats.pendingApprovals > 0 ? "Cần xử lý" : undefined,
+      trend: stats.pendingApprovals > 0 ? "neutral" : "up",
     },
     {
       title: "Nhật ký mới tuần này",
-      value: "37",
-      change: "+12",
-      trend: "up",
+      value: recentLogs.length,
+      change: recentLogs.length > 0 ? "Cần phản hồi" : undefined,
+      trend: "neutral" as const,
     },
     {
       title: "Đánh giá đã thực hiện",
-      value: "19",
-      change: "-3",
-      trend: "down",
+      value: stats.approvedThisMonth || "-",
+      change: stats.approvedThisMonth > 0 ? "Tháng này" : undefined,
+      trend: "up" as const,
     },
   ];
 
@@ -60,35 +173,78 @@ export function LecturerDashboardPage() {
     "bg-emerald-100 text-emerald-600",
   ];
 
-  // Recent journal entries (latest 6)
-  const recentLogs = [...mockLogEntries]
-    .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    .slice(0, 6);
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "approved":
+        return <Badge variant="success" size="sm">Đã duyệt</Badge>;
+      case "rejected":
+        return <Badge variant="danger" size="sm">Từ chối</Badge>;
+      case "pending":
+        return <Badge variant="warning" size="sm">Chờ duyệt</Badge>;
+      case "in_progress":
+        return <Badge variant="info" size="sm">Đang xử lý</Badge>;
+      default:
+        return <Badge variant="default" size="sm">{status}</Badge>;
+    }
+  };
 
-  // Pending approvals for quick action
-  const pendingApprovals = mockApprovalItems.filter(
-    (i) => i.status === "pending"
-  );
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 text-indigo-500 animate-spin" />
+          <p className="text-slate-500">Đang tải dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex flex-col items-center justify-center min-h-[400px] gap-4">
+        <AlertCircle className="h-12 w-12 text-red-400" />
+        <p className="text-slate-600">{error}</p>
+        <Button onClick={fetchDashboardData}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Thử lại
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Page Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">
-          Dashboard Giảng viên
-        </h1>
-        <p className="text-slate-500 mt-1">
-          Chào mừng bạn quay trở lại! Có{" "}
-          <span className="font-semibold text-indigo-600">
-            {pendingApprovals.length} đơn
-          </span>{" "}
-          đang chờ bạn phê duyệt.
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">
+            Dashboard Giảng viên
+          </h1>
+          <p className="text-slate-500 mt-1">
+            Chào mừng bạn quay trở lại!
+            {stats.pendingApprovals > 0 && (
+              <>
+                Có{" "}
+                <span className="font-semibold text-indigo-600">
+                  {stats.pendingApprovals} đơn
+                </span>{" "}
+                đang chờ bạn phê duyệt.
+              </>
+            )}
+            {stats.pendingApprovals === 0 && (
+              " Tất cả đơn đã được xử lý."
+            )}
+          </p>
+        </div>
+        <Button variant="outline" size="sm" onClick={fetchDashboardData}>
+          <RefreshCw className="h-4 w-4 mr-2" />
+          Làm mới
+        </Button>
       </div>
 
       {/* Stats Grid */}
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        {stats.map((stat, index) => {
+        {statCards.map((stat, index) => {
           const Icon = statIcons[index];
           const color = statColors[index];
           return (
@@ -116,9 +272,6 @@ export function LecturerDashboardPage() {
                         >
                           {stat.change}
                         </span>
-                        {stat.trend !== "neutral" && (
-                          <span className="text-slate-400">vs tháng trước</span>
-                        )}
                       </div>
                     )}
                   </div>
@@ -138,7 +291,7 @@ export function LecturerDashboardPage() {
       </div>
 
       {/* Quick Action: Pending Approvals Banner */}
-      {pendingApprovals.length > 0 && (
+      {stats.pendingApprovals > 0 && (
         <motion.div
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -150,7 +303,7 @@ export function LecturerDashboardPage() {
             </div>
             <div>
               <p className="font-semibold text-slate-900">
-                {pendingApprovals.length} đơn đang chờ phê duyệt
+                {stats.pendingApprovals} đơn đang chờ phê duyệt
               </p>
               <p className="text-sm text-slate-500">
                 Xem danh sách và phản hồi ngay hôm nay
@@ -205,47 +358,31 @@ export function LecturerDashboardPage() {
                 >
                   <Avatar className="h-9 w-9 shrink-0 mt-0.5">
                     <AvatarFallback className="text-xs bg-indigo-100 text-indigo-700 font-semibold">
-                      {log.studentId.slice(-2).toUpperCase()}
+                      {log.studentName
+                        .split(" ")
+                        .map((n) => n[0])
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center justify-between gap-2">
                       <p className="text-sm font-medium text-slate-900 truncate">
-                        Sinh viên #{log.studentId}
+                        {log.studentName}
                       </p>
                       <div className="flex items-center gap-1 shrink-0">
-                        {log.status === "approved" && (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
-                        )}
-                        {log.status === "pending" && (
-                          <Clock className="h-3.5 w-3.5 text-amber-500" />
-                        )}
-                        {log.status === "commented" && (
-                          <FileText className="h-3.5 w-3.5 text-blue-500" />
-                        )}
-                        <Badge
-                          variant={
-                            log.status === "approved"
-                              ? "success"
-                              : log.status === "pending"
-                              ? "warning"
-                              : "default"
-                          }
-                          size="sm"
-                        >
-                          {log.status === "approved"
-                            ? "Đã duyệt"
-                            : log.status === "pending"
-                            ? "Chờ duyệt"
-                            : "Đã phản hồi"}
-                        </Badge>
+                        {getStatusBadge(log.status)}
                       </div>
                     </div>
-                    <p className="text-xs text-slate-500 mt-0.5 line-clamp-1">
-                      Tuần {log.week} · {log.date}
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      Tuần {log.week} ·{" "}
+                      {log.date
+                        ? new Date(log.date).toLocaleDateString("vi-VN")
+                        : ""}
                     </p>
                     <p className="text-xs text-slate-400 mt-1 line-clamp-2">
-                      {log.completedWork.split("\n")[0]}
+                      {log.completedWork?.split("\n")[0] || "Không có nội dung"}
                     </p>
                   </div>
                 </motion.div>
@@ -262,9 +399,11 @@ export function LecturerDashboardPage() {
                 <ClipboardCheck className="h-4 w-4 text-amber-500" />
                 Đơn chờ phê duyệt
               </CardTitle>
-              <Badge variant="warning" size="sm">
-                {pendingApprovals.length}
-              </Badge>
+              {stats.pendingApprovals > 0 && (
+                <Badge variant="warning" size="sm">
+                  {stats.pendingApprovals}
+                </Badge>
+              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
@@ -285,11 +424,16 @@ export function LecturerDashboardPage() {
                   className="flex items-center gap-3 p-3 rounded-xl bg-amber-50/50 border border-amber-100 hover:border-amber-200 transition-colors"
                 >
                   <Avatar className="h-9 w-9 shrink-0">
+                    {item.studentAvatar ? (
+                      <AvatarImage src={item.studentAvatar} alt={item.studentName} />
+                    ) : null}
                     <AvatarFallback className="text-xs bg-amber-100 text-amber-700 font-semibold">
                       {item.studentName
                         .split(" ")
                         .map((n) => n[0])
-                        .join("")}
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
@@ -303,14 +447,14 @@ export function LecturerDashboardPage() {
                       {item.submittedDate}
                     </p>
                   </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-green-100">
-                      <CheckCircle2 className="h-3.5 w-3.5 text-green-600" />
-                    </div>
-                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-red-100">
-                      <XCircle className="h-3.5 w-3.5 text-red-600" />
-                    </div>
-                  </div>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => navigate("/lecturer/approval")}
+                    className="text-indigo-600 hover:text-indigo-700 hover:bg-indigo-50"
+                  >
+                    <ArrowRight className="h-4 w-4" />
+                  </Button>
                 </motion.div>
               ))
             )}

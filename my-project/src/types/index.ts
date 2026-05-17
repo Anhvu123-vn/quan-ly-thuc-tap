@@ -10,8 +10,8 @@ export interface Internship {
 
 export interface Application {
   id: string;
-  company: string;
-  position: string;
+  positionId: string;
+  studentId: string;
   status: ApplicationStatus;
   appliedDate: string;
 }
@@ -21,9 +21,9 @@ export type ApplicationStatus =
   | 'screening'
   | 'interview'
   | 'offer'
+  | 'department_approved'
   | 'rejected'
-  | 'withdrawn'
-  | 'departmentApproved';
+  | 'withdrawn';
 
 export interface LogEntry {
   id: string;
@@ -50,11 +50,39 @@ export interface Position {
   field: string;
   description: string;
   requirements: string[];
+  responsibilities?: string[];
   postedDate: string;
+  deadline?: string;
   salary?: string;
   salaryMin?: number;
   salaryMax?: number;
-  workType?: 'remote' | 'hybrid' | 'on-site';
+  workType?: 'remote' | 'hybrid' | 'onsite';
+  slots?: number;
+  status?: string;
+  applicantCount?: number;
+}
+
+// API Response Position (from backend)
+export interface ApiPosition {
+  id: string;
+  title: string;
+  companyId?: string;
+  company?: { id: string; name: string };
+  location?: string;
+  field?: string;
+  description?: string;
+  requirements?: string[];
+  responsibilities?: string[];
+  salaryMin?: number;
+  salaryMax?: number;
+  duration?: string;
+  workType?: string;
+  slots?: number;
+  postedDate?: string;
+  deadline?: string;
+  status?: string;
+  createdAt?: string;
+  _count?: { applications: number };
 }
 
 export interface ExtendedFilterState {

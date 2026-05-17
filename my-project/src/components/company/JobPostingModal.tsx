@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { motion, AnimatePresence } from "framer-motion";
@@ -6,19 +6,32 @@ import { X, Briefcase, MapPin, DollarSign, Clock, Tag, Plus, AlertCircle } from 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { jobPostingSchema, type JobPostingFormValues } from "@/lib/validation";
-import type { JobPosting } from "@/data/mockData";
+
+interface Position {
+  id: string;
+  title: string;
+  field?: string;
+  location?: string;
+  duration?: string;
+  workType?: string;
+  salaryMin?: number;
+  salaryMax?: number;
+  description?: string;
+  requirements?: string[];
+  status?: string;
+}
 
 interface JobPostingModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSave: (job: Omit<JobPosting, "id" | "postedDate" | "applicants">) => void;
-  editJob?: JobPosting | null;
+  onSave: (position: any) => void;
+  editPosition?: Position | null;
 }
 
 const WORK_TYPE_OPTIONS = [
   { value: "remote", label: "Remote" },
   { value: "hybrid", label: "Hybrid" },
-  { value: "on-site", label: "On-site" },
+  { value: "onsite", label: "On-site" },
 ];
 
 const FIELD_OPTIONS = [
@@ -31,9 +44,14 @@ const FIELD_OPTIONS = [
   "Business",
 ];
 
-const DURATION_OPTIONS = ["1 month", "2-3 months", "4-6 months", "6+ months"];
+const DURATION_OPTIONS = [
+  { value: "one_month", label: "1 tháng" },
+  { value: "two_three_months", label: "2-3 tháng" },
+  { value: "four_six_months", label: "4-6 tháng" },
+  { value: "six_plus_months", label: "6+ tháng" },
+];
 
-export function JobPostingModal({ isOpen, onClose, onSave, editJob }: JobPostingModalProps) {
+export function JobPostingModal({ isOpen, onClose, onSave, editPosition }: JobPostingModalProps) {
   const {
     register,
     handleSubmit,
@@ -43,17 +61,46 @@ export function JobPostingModal({ isOpen, onClose, onSave, editJob }: JobPosting
   } = useForm<JobPostingFormValues>({
     resolver: zodResolver(jobPostingSchema),
     defaultValues: {
-      title: editJob?.title || "",
-      field: editJob?.field || "",
-      location: editJob?.location || "",
-      workType: editJob?.workType || "on-site",
-      duration: editJob?.duration || "",
-      salaryMin: editJob?.salaryMin ? editJob.salaryMin / 1000000 : undefined,
-      salaryMax: editJob?.salaryMax ? editJob.salaryMax / 1000000 : undefined,
-      requirements: editJob?.requirements.join(", ") || "",
-      status: editJob?.status || "active",
+      title: editPosition?.title || "",
+      field: editPosition?.field || "",
+      location: editPosition?.location || "",
+      workType: editPosition?.workType || "onsite",
+      duration: editPosition?.duration || "",
+      salaryMin: editPosition?.salaryMin,
+      salaryMax: editPosition?.salaryMax,
+      requirements: editPosition?.requirements?.join(", ") || "",
+      status: editPosition?.status || "active",
     },
   });
+
+  // Reset form when editPosition changes
+  useEffect(() => {
+    if (editPosition) {
+      reset({
+        title: editPosition.title || "",
+        field: editPosition.field || "",
+        location: editPosition.location || "",
+        workType: editPosition.workType || "onsite",
+        duration: editPosition.duration || "",
+        salaryMin: editPosition.salaryMin,
+        salaryMax: editPosition.salaryMax,
+        requirements: editPosition.requirements?.join(", ") || "",
+        status: editPosition.status || "active",
+      });
+    } else {
+      reset({
+        title: "",
+        field: "",
+        location: "",
+        workType: "onsite",
+        duration: "",
+        salaryMin: undefined,
+        salaryMax: undefined,
+        requirements: "",
+        status: "active",
+      });
+    }
+  }, [editPosition, reset]);
 
   // Reset form when modal opens with new data
   const handleClose = () => {
@@ -68,8 +115,8 @@ export function JobPostingModal({ isOpen, onClose, onSave, editJob }: JobPosting
       location: data.location,
       workType: data.workType,
       duration: data.duration,
-      salaryMin: data.salaryMin ? data.salaryMin * 1000000 : undefined,
-      salaryMax: data.salaryMax ? data.salaryMax * 1000000 : undefined,
+      salaryMin: data.salaryMin,
+      salaryMax: data.salaryMax,
       requirements: data.requirements
         ? data.requirements.split(",").map((r) => r.trim()).filter(Boolean)
         : [],
@@ -101,7 +148,7 @@ export function JobPostingModal({ isOpen, onClose, onSave, editJob }: JobPosting
             className="fixed inset-0 z-50 flex items-center justify-center p-4"
           >
             <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-hidden flex flex-col">
-              {/* Header */}
+                {/* Header */}
               <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
                 <div className="flex items-center gap-3">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-indigo-100 text-indigo-600">
@@ -109,10 +156,10 @@ export function JobPostingModal({ isOpen, onClose, onSave, editJob }: JobPosting
                   </div>
                   <div>
                     <h3 className="font-semibold text-slate-900">
-                      {editJob ? "Chỉnh sửa vị trí" : "Đăng tin tuyển dụng mới"}
+                      {editPosition ? "Chỉnh sửa vị trí" : "Đăng tin tuyển dụng mới"}
                     </h3>
                     <p className="text-xs text-slate-500">
-                      {editJob ? "Cập nhật thông tin vị trí thực tập" : "Điền thông tin vị trí thực tập cần tuyển"}
+                      {editPosition ? "Cập nhật thông tin vị trí thực tập" : "Điền thông tin vị trí thực tập cần tuyển"}
                     </p>
                   </div>
                 </div>
@@ -219,7 +266,7 @@ export function JobPostingModal({ isOpen, onClose, onSave, editJob }: JobPosting
                     >
                       <option value="">Chọn thời hạn</option>
                       {DURATION_OPTIONS.map((d) => (
-                        <option key={d} value={d}>{d}</option>
+                        <option key={d.value} value={d.value}>{d.label}</option>
                       ))}
                     </select>
                     {errors.duration && (
@@ -286,7 +333,7 @@ export function JobPostingModal({ isOpen, onClose, onSave, editJob }: JobPosting
                 </div>
 
                 {/* Status */}
-                {editJob && (
+                {editPosition && (
                   <div>
                     <label className="block text-sm font-medium text-slate-700 mb-1.5">Trạng thái</label>
                     <select
@@ -313,7 +360,7 @@ export function JobPostingModal({ isOpen, onClose, onSave, editJob }: JobPosting
                   className="flex-1 bg-indigo-500 hover:bg-indigo-600 text-white"
                 >
                   <Plus className="h-4 w-4 mr-1.5" />
-                  {editJob ? "Lưu thay đổi" : "Đăng tin"}
+                  {editPosition ? "Lưu thay đổi" : "Đăng tin"}
                 </Button>
               </div>
             </div>

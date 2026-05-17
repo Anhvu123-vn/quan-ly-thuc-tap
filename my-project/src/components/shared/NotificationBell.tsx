@@ -1,11 +1,18 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Bell, Check, FileText, MessageSquare, AlertTriangle, Calendar } from "lucide-react";
+import { Bell, Check, FileText, MessageSquare, AlertTriangle, Calendar, Loader2 } from "lucide-react";
 import { useAuth } from "@/contexts/AuthContext";
 import { cn } from "@/lib/utils";
-import type { UserRole } from "@/types";
+import { api } from "@/services/api";
 
-export type NotificationType = "approval" | "log" | "deadline" | "info";
+export type NotificationType =
+  | "approval"
+  | "log"
+  | "deadline"
+  | "info"
+  | "application"
+  | "evaluation"
+  | "system";
 
 export interface NotificationItem {
   id: string;
@@ -15,149 +22,292 @@ export interface NotificationItem {
   time: string;
   read: boolean;
   actionUrl?: string;
+  createdAt?: string;
 }
-
-// Mock notifications by role
-const mockNotifications: Record<UserRole, NotificationItem[]> = {
-  student: [
-    { id: "1", type: "approval", title: "Đơn được duyệt!", message: "Đơn thực tập tại TechCorp đã được duyệt", time: "2 giờ trước", read: false },
-    { id: "2", type: "log", title: "Phản hồi mới", message: "GV Nguyễn Văn A đã phản hồi nhật ký tuần 3", time: "5 giờ trước", read: false },
-    { id: "3", type: "deadline", title: "Hạn chót sắp đến", message: "Nộp báo cáo thực tập tuần 4 trong 2 ngày", time: "1 ngày trước", read: true },
-    { id: "4", type: "info", title: "Công việc mới", message: "FPT Software có vị trí Fresher React phù hợp với bạn", time: "2 ngày trước", read: true },
-  ],
-  lecturer: [
-    { id: "1", type: "approval", title: "Cần phê duyệt", message: "5 đơn thực tập chờ phê duyệt cấp Khoa", time: "10 phút trước", read: false },
-    { id: "2", type: "log", title: "Nhật ký mới", message: "Trần Minh có 2 nhật ký mới cần phản hồi", time: "1 giờ trước", read: false },
-    { id: "3", type: "deadline", title: "Học kỳ kết thúc", message: "Thời hạn chấm điểm: 15/06/2026", time: "3 ngày trước", read: true },
-  ],
-  company: [
-    { id: "1", type: "approval", title: "Ứng viên mới", message: "10 sinh viên ứng tuyển vị trí Frontend Developer", time: "30 phút trước", read: false },
-    { id: "2", type: "info", title: "Yêu cầu đánh giá", message: "Cần đánh giá sinh viên thực tập tháng 5", time: "2 giờ trước", read: false },
-    { id: "3", type: "deadline", title: "Hạn hợp đồng", message: "Hợp đồng thực tập của 3 sinh viên sắp hết hạn", time: "1 ngày trước", read: true },
-  ],
-  admin: [
-    { id: "1", type: "approval", title: "Tài khoản mới", message: "3 doanh nghiệp chờ phê duyệt", time: "5 phút trước", read: false },
-    { id: "2", type: "info", title: "Báo cáo tháng", message: "Báo cáo thống kê tháng 5 đã sẵn sàng", time: "1 giờ trước", read: false },
-    { id: "3", type: "deadline", title: "Cập nhật hệ thống", message: "Lên lịch bảo trì server: 20/05/2026", time: "1 ngày trước", read: true },
-  ],
-};
 
 const iconMap: Record<NotificationType, typeof Bell> = {
   approval: FileText,
   log: MessageSquare,
   deadline: Calendar,
   info: AlertTriangle,
+  application: FileText,
+  evaluation: MessageSquare,
+  system: AlertTriangle,
 };
 
-const colorMap: Record<NotificationType, string> = {
-  approval: "text-emerald-500 bg-emerald-50",
-  log: "text-indigo-500 bg-indigo-50",
-  deadline: "text-amber-500 bg-amber-50",
-  info: "text-blue-500 bg-blue-50",
+const colorMap: Record<NotificationType, { icon: string; bg: string }> = {
+  approval: { icon: "text-emerald-500", bg: "bg-emerald-50" },
+  log: { icon: "text-indigo-500", bg: "bg-indigo-50" },
+  deadline: { icon: "text-amber-500", bg: "bg-amber-50" },
+  info: { icon: "text-blue-500", bg: "bg-blue-50" },
+  application: { icon: "text-emerald-500", bg: "bg-emerald-50" },
+  evaluation: { icon: "text-purple-500", bg: "bg-purple-50" },
+  system: { icon: "text-slate-500", bg: "bg-slate-50" },
 };
+
+const POLL_INTERVAL_MS = 30_000; // 30 seconds
+
+function formatTimeAgo(dateString?: string): string {
+  if (!dateString) return "Vừa xong";
+
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60_000);
+  const diffHours = Math.floor(diffMs / 3_600_000);
+  const diffDays = Math.floor(diffMs / 86_400_000);
+
+  if (diffMins < 1) return "Vừa xong";
+  if (diffMins < 60) return `${diffMins} phút trước`;
+  if (diffHours < 24) return `${diffHours} giờ trước`;
+  if (diffDays < 7) return `${diffDays} ngày trước`;
+  return date.toLocaleDateString("vi-VN", { day: "numeric", month: "short" });
+}
+
+function parseNotificationType(type?: string): NotificationType {
+  const t = (type || "").toLowerCase();
+  if (t.includes("approval") || t.includes("approved") || t.includes("accept")) return "approval";
+  if (t.includes("log") || t.includes("journal")) return "log";
+  if (t.includes("deadline") || t.includes("reminder")) return "deadline";
+  if (t.includes("application") || t.includes("apply")) return "application";
+  if (t.includes("evaluation") || t.includes("score")) return "evaluation";
+  if (t.includes("system") || t.includes("admin")) return "system";
+  return "info";
+}
+
+function transformNotification(n: any): NotificationItem {
+  return {
+    id: n.id || String(Math.random()),
+    type: parseNotificationType(n.type || n.notificationType),
+    title: n.title || n.content?.slice(0, 50) || "Thông báo mới",
+    message: n.message || n.content || "",
+    time: formatTimeAgo(n.createdAt || n.timestamp),
+    read: n.isRead === true || n.read === true,
+    actionUrl: n.actionUrl || n.link,
+    createdAt: n.createdAt,
+  };
+}
 
 export function NotificationBell() {
   const { user } = useAuth();
   const [isOpen, setIsOpen] = useState(false);
+  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
+  const [isLoading, setIsLoading] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const role = user?.role || "student";
-  const notifications = mockNotifications[role];
-  const unreadCount = notifications.filter((n) => !n.read).length;
+  // Fetch only unread count — fast lightweight call
+  const fetchUnreadCount = useCallback(async () => {
+    if (!user) return;
+    try {
+      const data = await api.getUnreadCount();
+      setUnreadCount(typeof data === "number" ? data : (data?.count ?? 0));
+    } catch {
+      // Silently ignore — badge just stays stale
+    }
+  }, [user]);
 
-  // Close dropdown when clicking outside
+  // Fetch full notification list when dropdown opens
+  const fetchNotifications = useCallback(async () => {
+    if (!user) return;
+    setIsLoading(true);
+    try {
+      const response = await api.getNotifications({ page: 1 });
+      const raw: any[] = response?.data || response || [];
+      const transformed = Array.isArray(raw) ? raw.map(transformNotification) : [];
+      setNotifications(transformed);
+    } catch {
+      setNotifications([]);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  // Start/stop polling for unread count
   useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+    if (!user) {
+      setUnreadCount(0);
+      setNotifications([]);
+      return;
+    }
+
+    // Immediate fetch on mount / user change
+    fetchUnreadCount();
+
+    pollIntervalRef.current = setInterval(fetchUnreadCount, POLL_INTERVAL_MS);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+    };
+  }, [user, fetchUnreadCount]);
+
+  // Refresh full list when dropdown opens
+  useEffect(() => {
+    if (isOpen && user) {
+      fetchNotifications();
+    }
+  }, [isOpen, user, fetchNotifications]);
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setIsOpen(false);
       }
     };
-
-    document.addEventListener("mousedown", handleClickOutside);
-    return () => document.removeEventListener("mousedown", handleClickOutside);
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
   }, []);
 
-  const markAsRead = (id: string) => {
-    // In real app, call API to mark as read
+  const markAsRead = async (id: string) => {
+    try {
+      await api.markAsRead(id);
+      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, read: true } : n)));
+      setUnreadCount((prev) => Math.max(0, prev - 1));
+    } catch (err) {
+      console.error("Failed to mark as read:", err);
+    }
+  };
+
+  const markAllAsRead = async () => {
+    try {
+      await api.markAllAsRead();
+      setNotifications((prev) => prev.map((n) => ({ ...n, read: true })));
+      setUnreadCount(0);
+    } catch (err) {
+      console.error("Failed to mark all as read:", err);
+    }
+  };
+
+  const openDropdown = () => {
+    setIsOpen(true);
+    if (user) fetchNotifications();
   };
 
   return (
     <div className="relative" ref={dropdownRef}>
       {/* Bell Button */}
       <button
-        onClick={() => setIsOpen(!isOpen)}
+        onClick={() => (isOpen ? setIsOpen(false) : openDropdown())}
         className="relative p-2.5 rounded-xl hover:bg-slate-100 transition-colors"
+        aria-label={`Thông báo${unreadCount > 0 ? ` (${unreadCount} chưa đọc)` : ""}`}
       >
-        <Bell className="h-5 w-5 text-slate-600" />
-        {unreadCount > 0 && (
-          <motion.span
-            initial={{ scale: 0 }}
-            animate={{ scale: 1 }}
-            className="absolute -top-0.5 -right-0.5 h-5 w-5 rounded-full bg-red-500 text-white text-xs font-medium flex items-center justify-center"
-          >
-            {unreadCount}
-          </motion.span>
-        )}
+        <motion.div
+          whileHover={{ rotate: 15 }}
+          transition={{ type: "spring", stiffness: 300 }}
+        >
+          <Bell className="h-5 w-5 text-slate-600" />
+        </motion.div>
+
+        {/* Unread badge */}
+        <AnimatePresence>
+          {unreadCount > 0 && (
+            <motion.span
+              key="badge"
+              initial={{ scale: 0, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 500, damping: 25 }}
+              className="absolute -top-0.5 -right-0.5 flex items-center justify-center min-w-[18px] h-[18px] px-1 rounded-full bg-red-500 text-white text-[10px] font-bold leading-none shadow-sm"
+            >
+              {unreadCount > 99 ? "99+" : unreadCount}
+            </motion.span>
+          )}
+        </AnimatePresence>
       </button>
 
       {/* Dropdown */}
       <AnimatePresence>
         {isOpen && (
           <motion.div
-            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+            initial={{ opacity: 0, y: 8, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+            exit={{ opacity: 0, y: 8, scale: 0.96 }}
             transition={{ duration: 0.15 }}
             className="absolute right-0 mt-2 w-80 bg-white rounded-2xl shadow-xl border border-slate-200 overflow-hidden z-50"
           >
             {/* Header */}
             <div className="px-4 py-3 border-b border-slate-100 flex items-center justify-between">
-              <h3 className="font-semibold text-slate-900">Thông báo</h3>
+              <div className="flex items-center gap-2">
+                <h3 className="font-semibold text-slate-900">Thông báo</h3>
+                {unreadCount > 0 && (
+                  <span className="inline-flex items-center justify-center min-w-[20px] h-5 px-1.5 rounded-full bg-red-50 text-red-600 text-xs font-semibold">
+                    {unreadCount}
+                  </span>
+                )}
+              </div>
               {unreadCount > 0 && (
-                <span className="text-xs text-indigo-600 font-medium">
-                  {unreadCount} chưa đọc
-                </span>
+                <button
+                  onClick={markAllAsRead}
+                  className="flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-700 font-medium transition-colors"
+                >
+                  <Check className="h-3 w-3" />
+                  Đánh dấu đã đọc
+                </button>
               )}
             </div>
 
             {/* Notification List */}
             <div className="max-h-80 overflow-y-auto">
-              {notifications.length === 0 ? (
+              {isLoading ? (
+                <div className="p-8 text-center text-slate-400">
+                  <Loader2 className="h-6 w-6 mx-auto mb-2 animate-spin" />
+                  <p className="text-sm">Đang tải...</p>
+                </div>
+              ) : notifications.length === 0 ? (
                 <div className="p-8 text-center text-slate-400">
                   <Bell className="h-8 w-8 mx-auto mb-2 opacity-50" />
                   <p className="text-sm">Không có thông báo</p>
                 </div>
               ) : (
                 notifications.map((notification, index) => {
-                  const Icon = iconMap[notification.type];
-                  const colors = colorMap[notification.type];
+                  const Icon = iconMap[notification.type] || Bell;
+                  const colors = colorMap[notification.type] || colorMap.info;
 
                   return (
                     <motion.div
                       key={notification.id}
-                      initial={{ opacity: 0, x: -10 }}
+                      initial={{ opacity: 0, x: -8 }}
                       animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: index * 0.05 }}
-                      onClick={() => markAsRead(notification.id)}
+                      transition={{ delay: index * 0.04 }}
+                      onClick={() => !notification.read && markAsRead(notification.id)}
                       className={cn(
                         "px-4 py-3 border-b border-slate-50 hover:bg-slate-50 cursor-pointer transition-colors",
                         !notification.read && "bg-indigo-50/50"
                       )}
                     >
                       <div className="flex gap-3">
-                        <div className={cn("h-9 w-9 rounded-lg flex items-center justify-center shrink-0", colors)}>
-                          <Icon className="h-4 w-4" />
+                        <div
+                          className={cn(
+                            "h-9 w-9 rounded-lg flex items-center justify-center shrink-0",
+                            colors.bg
+                          )}
+                        >
+                          <Icon className={cn("h-4 w-4", colors.icon)} />
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <p className={cn("text-sm font-medium text-slate-900", !notification.read && "text-indigo-700")}>
+                            <p
+                              className={cn(
+                                "text-sm font-medium text-slate-900 line-clamp-1",
+                                !notification.read && "text-indigo-700"
+                              )}
+                            >
                               {notification.title}
                             </p>
                             {!notification.read && (
-                              <span className="h-2 w-2 rounded-full bg-indigo-500" />
+                              <motion.span
+                                layoutId="unread-dot"
+                                className="h-2 w-2 rounded-full bg-indigo-500 shrink-0"
+                              />
                             )}
                           </div>
-                          <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">{notification.message}</p>
+                          <p className="text-xs text-slate-500 mt-0.5 line-clamp-2">
+                            {notification.message}
+                          </p>
                           <p className="text-xs text-slate-400 mt-1">{notification.time}</p>
                         </div>
                       </div>
@@ -168,8 +318,8 @@ export function NotificationBell() {
             </div>
 
             {/* Footer */}
-            <div className="px-4 py-3 border-t border-slate-100 bg-slate-50">
-              <button className="w-full text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors">
+            <div className="px-4 py-3 border-t border-slate-100 bg-slate-50 text-center">
+              <button className="text-sm text-indigo-600 hover:text-indigo-700 font-medium transition-colors">
                 Xem tất cả thông báo
               </button>
             </div>

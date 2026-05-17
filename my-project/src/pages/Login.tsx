@@ -16,7 +16,7 @@ export function LoginPage() {
   const navigate = useNavigate();
   const location = useLocation();
   
-  const from = (location.state as { from?: Location })?.from?.pathname || "/dashboard";
+  const from = (location.state as { from?: Location })?.from?.pathname || "/positions";
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -37,8 +37,6 @@ export function LoginPage() {
 
     try {
       await login(email, password);
-      
-      // Redirect based on role (handled by RoleSelectionModal for new users)
       navigate(from, { replace: true });
     } catch {
       setError("Invalid email or password. Please try again.");
@@ -129,18 +127,6 @@ export function LoginPage() {
                 )}
               </Button>
             </form>
-            
-            {/* Demo credentials */}
-            <div className="mt-6 p-4 rounded-xl bg-slate-50 border border-slate-200">
-              <p className="text-xs font-medium text-slate-500 mb-2">Demo Credentials:</p>
-              <div className="space-y-1 text-xs text-slate-600">
-                <p><span className="font-medium">Student:</span> student@example.com</p>
-                <p><span className="font-medium">Lecturer:</span> lecturer@example.com</p>
-                <p><span className="font-medium">Company:</span> company@example.com</p>
-                <p><span className="font-medium">Admin:</span> admin@example.com</p>
-                <p className="mt-2 text-slate-400">(Use any password)</p>
-              </div>
-            </div>
           </CardContent>
         </Card>
       </motion.div>

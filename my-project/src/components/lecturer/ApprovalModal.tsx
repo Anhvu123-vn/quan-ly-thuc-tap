@@ -1,11 +1,25 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { X, Check, AlertTriangle, Info } from "lucide-react";
+import { X, Check, AlertTriangle, Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/shared/Badge";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import type { ApprovalItem } from "@/data/mockData";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+
+interface ApprovalItem {
+  id: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  studentAvatar?: string;
+  company: string;
+  position: string;
+  level: "department" | "lecturer" | "registrar";
+  submittedDate: string;
+  status: "pending" | "in_progress" | "approved" | "rejected";
+  comment?: string;
+  reviewerName?: string;
+}
 
 interface ApprovalModalProps {
   isOpen: boolean;
@@ -13,6 +27,7 @@ interface ApprovalModalProps {
   item: ApprovalItem | null;
   onConfirm: (id: string, comment: string) => void;
   type: "approve" | "reject";
+  isSubmitting?: boolean;
 }
 
 export function ApprovalModal({
@@ -21,6 +36,7 @@ export function ApprovalModal({
   item,
   onConfirm,
   type,
+  isSubmitting = false,
 }: ApprovalModalProps) {
   const [comment, setComment] = useState("");
 
@@ -28,12 +44,24 @@ export function ApprovalModal({
     if (!item) return;
     onConfirm(item.id, comment);
     setComment("");
-    onClose();
   };
 
   const handleClose = () => {
     setComment("");
     onClose();
+  };
+
+  const getLevelLabel = (level: ApprovalItem["level"]) => {
+    switch (level) {
+      case "department":
+        return "Cấp Khoa";
+      case "lecturer":
+        return "GV Hướng dẫn";
+      case "registrar":
+        return "Phòng Đào tạo";
+      default:
+        return level;
+    }
   };
 
   return (
@@ -96,6 +124,7 @@ export function ApprovalModal({
                 <button
                   onClick={handleClose}
                   className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100 transition-colors"
+                  disabled={isSubmitting}
                 >
                   <X className="h-4 w-4" />
                 </button>
@@ -106,11 +135,16 @@ export function ApprovalModal({
                 {/* Applicant Info */}
                 <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
                   <Avatar className="h-10 w-10 shrink-0">
+                    {item.studentAvatar ? (
+                      <AvatarImage src={item.studentAvatar} alt={item.studentName} />
+                    ) : null}
                     <AvatarFallback className="text-xs bg-indigo-100 text-indigo-700 font-semibold">
                       {item.studentName
                         .split(" ")
                         .map((n) => n[0])
-                        .join("")}
+                        .join("")
+                        .slice(0, 2)
+                        .toUpperCase()}
                     </AvatarFallback>
                   </Avatar>
                   <div className="flex-1 min-w-0">
@@ -123,12 +157,10 @@ export function ApprovalModal({
                     </p>
                   </div>
                   <Badge
-                    variant={
-                      item.level === "faculty" ? "default" : "secondary"
-                    }
+                    variant="default"
                     size="sm"
                   >
-                    {item.level === "faculty" ? "Cấp Khoa" : "GV HD"}
+                    {getLevelLabel(item.level)}
                   </Badge>
                 </div>
 
@@ -175,6 +207,7 @@ export function ApprovalModal({
                     }
                     rows={3}
                     className="resize-none"
+                    disabled={isSubmitting}
                   />
                   {type === "reject" && !comment.trim() && (
                     <p className="text-xs text-red-500 mt-1">
@@ -190,19 +223,25 @@ export function ApprovalModal({
                   variant="outline"
                   onClick={handleClose}
                   className="flex-1"
+                  disabled={isSubmitting}
                 >
                   Huỷ
                 </Button>
                 <Button
                   onClick={handleConfirm}
-                  disabled={type === "reject" && !comment.trim()}
+                  disabled={isSubmitting || (type === "reject" && !comment.trim())}
                   className={`flex-1 ${
                     type === "approve"
                       ? "bg-emerald-500 hover:bg-emerald-600 text-white"
                       : "bg-red-500 hover:bg-red-600 text-white"
                   }`}
                 >
-                  {type === "approve" ? (
+                  {isSubmitting ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1.5 animate-spin" />
+                      Đang xử lý...
+                    </>
+                  ) : type === "approve" ? (
                     <>
                       <Check className="h-4 w-4 mr-1.5" />
                       Xác nhận duyệt

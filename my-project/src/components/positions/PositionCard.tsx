@@ -12,7 +12,44 @@ interface PositionCardProps {
   isAuthenticated?: boolean;
 }
 
+const durationLabels: Record<string, string> = {
+  one_month: "1 tháng",
+  two_three_months: "2-3 tháng",
+  four_six_months: "4-6 tháng",
+  six_plus_months: "6+ tháng",
+};
+
 export function PositionCard({ position, onApply, isAuthenticated }: PositionCardProps) {
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return "";
+    const date = new Date(dateStr);
+    const now = new Date();
+    const diffTime = Math.abs(now.getTime() - date.getTime());
+    const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+    
+    if (diffDays === 0) return "Hôm nay";
+    if (diffDays === 1) return "Hôm qua";
+    if (diffDays < 7) return `${diffDays} ngày trước`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)} tuần trước`;
+    return date.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit" });
+  };
+
+  const getDurationLabel = (duration?: string) => {
+    return durationLabels[duration || ""] || duration || "";
+  };
+
+  const formatSalary = () => {
+    if (position.salary) return position.salary;
+    if (position.salaryMin || position.salaryMax) {
+      const min = position.salaryMin?.toLocaleString() || "";
+      const max = position.salaryMax?.toLocaleString() || "";
+      if (min && max) return `${min} - ${max}`;
+      if (min) return `Từ ${min}`;
+      if (max) return `Đến ${max}`;
+    }
+    return null;
+  };
+
   return (
     <motion.div
       whileHover={{ y: -4 }}
@@ -44,22 +81,28 @@ export function PositionCard({ position, onApply, isAuthenticated }: PositionCar
         <CardContent className="flex-1 flex flex-col">
           {/* Badges */}
           <div className="flex flex-wrap gap-2 mb-4">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[--color-border] bg-[--color-muted]/50 px-3 py-1 text-xs font-medium text-[--color-muted-foreground]">
-              <MapPin className="h-3 w-3" aria-hidden="true" />
-              {position.location}
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-[--color-primary]/10 px-3 py-1 text-xs font-medium text-[--color-primary] border border-[--color-primary]/20">
-              <Clock className="h-3 w-3" aria-hidden="true" />
-              {position.duration}
-            </span>
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-[--color-border] bg-[--color-muted]/50 px-3 py-1 text-xs font-medium text-[--color-muted-foreground]">
-              <Briefcase className="h-3 w-3" aria-hidden="true" />
-              {position.field}
-            </span>
-            {position.salary && (
+            {position.location && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[--color-border] bg-[--color-muted]/50 px-3 py-1 text-xs font-medium text-[--color-muted-foreground]">
+                <MapPin className="h-3 w-3" aria-hidden="true" />
+                {position.location}
+              </span>
+            )}
+            {position.duration && (
+              <span className="inline-flex items-center gap-1.5 rounded-full bg-[--color-primary]/10 px-3 py-1 text-xs font-medium text-[--color-primary] border border-[--color-primary]/20">
+                <Clock className="h-3 w-3" aria-hidden="true" />
+                {getDurationLabel(position.duration)}
+              </span>
+            )}
+            {position.field && (
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-[--color-border] bg-[--color-muted]/50 px-3 py-1 text-xs font-medium text-[--color-muted-foreground]">
+                <Briefcase className="h-3 w-3" aria-hidden="true" />
+                {position.field}
+              </span>
+            )}
+            {formatSalary() && (
               <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-3 py-1 text-xs font-medium text-emerald-700 border border-emerald-200">
                 <DollarSign className="h-3 w-3" aria-hidden="true" />
-                {position.salary}
+                {formatSalary()}
               </span>
             )}
           </div>
@@ -72,14 +115,14 @@ export function PositionCard({ position, onApply, isAuthenticated }: PositionCar
           {/* Footer */}
           <div className="mt-4 flex items-center justify-between gap-3 pt-4 border-t border-[--color-border]/50">
             <span className="text-xs text-[--color-muted-foreground]">
-              Posted {position.postedDate}
+              Đăng {formatDate(position.postedDate)}
             </span>
             <Button 
               size="sm" 
               onClick={() => onApply?.(position.id)}
               className="group/btn gap-1"
             >
-              <span>Apply Now</span>
+              <span>Ứng tuyển</span>
               <ArrowRight className="h-3.5 w-3.5 transition-transform group-hover/btn:translate-x-1" aria-hidden="true" />
             </Button>
           </div>

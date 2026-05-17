@@ -1,8 +1,13 @@
 import { ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import type { FilterState } from "@/types";
-import { LOCATION_OPTIONS, DURATION_OPTIONS, FIELD_OPTIONS } from "@/types";
 import { cn } from "@/lib/utils";
+
+interface FilterState {
+  search: string;
+  location: string[];
+  duration: string[];
+  field: string[];
+}
 
 interface FilterPanelProps {
   filters: FilterState;
@@ -11,8 +16,12 @@ interface FilterPanelProps {
   onToggleCollapse?: () => void;
 }
 
+const LOCATIONS = ['Remote', 'Ho Chi Minh City', 'Hanoi', 'Da Nang', 'Others'];
+const DURATIONS = ['1 month', '2-3 months', '4-6 months', '6+ months'];
+const FIELDS = ['Software', 'Design', 'Marketing', 'Data Science', 'Product'];
+
 export function FilterPanel({ filters, onFilterChange, isCollapsed, onToggleCollapse }: FilterPanelProps) {
-  const toggleFilter = (category: keyof Pick<FilterState, "location" | "duration" | "field">, value: string) => {
+  const toggleFilter = (category: 'location' | 'duration' | 'field', value: string) => {
     const current = filters[category];
     const updated = current.includes(value)
       ? current.filter((v) => v !== value)
@@ -50,11 +59,11 @@ export function FilterPanel({ filters, onFilterChange, isCollapsed, onToggleColl
     <div className={cn("bg-white border border-[--color-border] rounded-lg", isCollapsed && "hidden lg:block")}>
       {/* Header */}
       <div className="flex items-center justify-between p-4 border-b border-[--color-border]">
-        <h2 className="font-semibold">Filters</h2>
+        <h2 className="font-semibold">Bộ lọc</h2>
         <div className="flex items-center gap-2">
           {hasActiveFilters && (
             <Button variant="ghost" size="sm" onClick={clearAll}>
-              Clear all
+              Xóa tất cả
             </Button>
           )}
           {onToggleCollapse && (
@@ -69,9 +78,9 @@ export function FilterPanel({ filters, onFilterChange, isCollapsed, onToggleColl
       <div className={cn("p-4 space-y-6", isCollapsed && "hidden lg:block")}>
         {/* Location */}
         <div>
-          <h3 className="text-sm font-medium mb-3">Location</h3>
+          <h3 className="text-sm font-medium mb-3">Địa điểm</h3>
           <div className="space-y-1">
-            {LOCATION_OPTIONS.map((option) => (
+            {LOCATIONS.map((option) => (
               <FilterCheckbox
                 key={option}
                 label={option}
@@ -84,9 +93,9 @@ export function FilterPanel({ filters, onFilterChange, isCollapsed, onToggleColl
 
         {/* Duration */}
         <div>
-          <h3 className="text-sm font-medium mb-3">Duration</h3>
+          <h3 className="text-sm font-medium mb-3">Thời gian</h3>
           <div className="space-y-1">
-            {DURATION_OPTIONS.map((option) => (
+            {DURATIONS.map((option) => (
               <FilterCheckbox
                 key={option}
                 label={option}
@@ -99,9 +108,9 @@ export function FilterPanel({ filters, onFilterChange, isCollapsed, onToggleColl
 
         {/* Field */}
         <div>
-          <h3 className="text-sm font-medium mb-3">Field</h3>
+          <h3 className="text-sm font-medium mb-3">Lĩnh vực</h3>
           <div className="space-y-1">
-            {FIELD_OPTIONS.map((option) => (
+            {FIELDS.map((option) => (
               <FilterCheckbox
                 key={option}
                 label={option}

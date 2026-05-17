@@ -33,7 +33,8 @@ export function ApplicationStatus({ applications, onCancel, onViewDetails }: App
   };
 
   const canBeCancelled = (status: Application["status"]) => {
-    return status === "applied" || status === "screening";
+    const cancellableStatuses = ['applied', 'screening', 'interview', 'offer', 'department_approved'];
+    return cancellableStatuses.includes(status);
   };
 
   return (

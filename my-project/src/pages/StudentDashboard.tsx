@@ -1,55 +1,205 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { InternshipSuggestions } from "@/components/dashboard/InternshipSuggestions";
 import { ApplicationStatus } from "@/components/dashboard/ApplicationStatus";
 import { ProgressTimeline } from "@/components/dashboard/ProgressTimeline";
 import { InternshipLogPreview } from "@/components/dashboard/InternshipLogPreview";
 import { motion } from "framer-motion";
-import type { Application } from "@/data/mockData";
-import type { Internship, LogEntry, TimelineStage } from "@/types";
+import { Loader2 } from "lucide-react";
+import { api } from "@/services/api";
+import { toast } from "sonner";
 
-// Mock internship suggestions
-const mockInternships: Internship[] = [
-  { id: "1", company: "TechCorp", position: "Frontend Developer Intern", location: "Ho Chi Minh City", duration: "3 months", matchScore: 92, postedDate: "2 days ago" },
-  { id: "2", company: "Innovation Labs", position: "React Developer", location: "Remote", duration: "6 months", matchScore: 85, postedDate: "1 week ago" },
-  { id: "3", company: "DataFlow Inc", position: "Software Engineer Trainee", location: "Hanoi", duration: "4 months", matchScore: 78, postedDate: "3 days ago" },
-];
+interface Application {
+  id: string;
+  positionId: string;
+  studentId: string;
+  status: string;
+  appliedAt: string;
+  position?: {
+    id: string;
+    title: string;
+    company?: {
+      name: string;
+    };
+  };
+}
 
-// Mock data
-const mockTimelineStages: TimelineStage[] = [
-  { id: "1", label: "Applied", completed: true, current: false },
-  { id: "2", label: "Screening", completed: true, current: false },
-  { id: "3", label: "Interview", completed: false, current: true },
-  { id: "4", label: "Offer", completed: false, current: false },
-  { id: "5", label: "Accepted", completed: false, current: false },
-];
+interface LogEntry {
+  id: string;
+  weekNumber: number;
+  entryDate: string;
+  completedWork: string;
+  challenges?: string;
+  lessonsLearned?: string;
+  goalsForNextWeek?: string;
+  status: string;
+  createdAt: string;
+}
+
+interface TimelineStage {
+  id: string;
+  label: string;
+  completed: boolean;
+  current: boolean;
+}
+
+const statusToStageIndex: Record<string, number> = {
+  applied: 0,
+  screening: 1,
+  interview: 2,
+  offer: 3,
+  department_approved: 4,
+  accepted: 4,
+  rejected: -1,
+  withdrawn: -1,
+};
 
 export function StudentDashboardPage() {
-  const [applications, setApplications] = useState<Application[]>([
-    { id: "app-1", positionId: "pos-1", studentId: "stu-1", studentName: "Trần Minh Đức", company: "Google", position: "Software Engineering Intern", status: "departmentApproved", appliedDate: "May 5, 2026" },
-    { id: "app-2", positionId: "pos-2", studentId: "stu-1", studentName: "Trần Minh Đức", company: "Microsoft", position: "Frontend Developer", status: "screening", appliedDate: "May 3, 2026" },
-    { id: "app-3", positionId: "pos-3", studentId: "stu-1", studentName: "Trần Minh Đức", company: "Atlassian", position: "Junior Developer", status: "offer", appliedDate: "Apr 28, 2026" },
-    { id: "app-4", positionId: "pos-4", studentId: "stu-1", studentName: "Trần Minh Đức", company: "Shopee", position: "Software Intern", status: "rejected", appliedDate: "Apr 20, 2026" },
-    { id: "app-5", positionId: "pos-5", studentId: "stu-1", studentName: "Trần Minh Đức", company: "TechCorp", position: "Backend Intern", status: "applied", appliedDate: "Apr 18, 2026" },
-  ]);
+  const [applications, setApplications] = useState<Application[]>([]);
+  const [logEntries, setLogEntries] = useState<LogEntry[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const mockLogEntries: LogEntry[] = [
-    { id: "1", date: "May 10, 2026", hours: 8, description: "Completed React hooks tutorial and built a task management app" },
-    { id: "2", date: "May 9, 2026", hours: 6, description: "Pair programming session on authentication flow" },
-    { id: "3", date: "May 8, 2026", hours: 7, description: "Code review and fixed bug in user dashboard" },
-  ];
+  const fetchData = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    try {
+      const [appsData, logsData] = await Promise.all([
+        api.getMyApplications(),
+        api.getMyLogs(),
+      ]);
+      
+      // Transform applications data
+      const transformedApps: Application[] = (appsData || []).map((app: any) => ({
+        id: app.id,
+        positionId: app.positionId || app.position?.id,
+        studentId: app.studentId,
+        status: app.status,
+        appliedAt: app.appliedAt || app.createdAt,
+        position: app.position ? {
+          id: app.position.id,
+          title: app.position.title,
+          company: app.position.company ? { name: app.position.company.name } : undefined,
+        } : undefined,
+      }));
+      
+      setApplications(transformedApps);
+      setLogEntries(logsData || []);
+    } catch (err) {
+      console.error("Failed to fetch data:", err);
+      setError("Không thể tải dữ liệu");
+    } finally {
+      setIsLoading(false);
+    }
+  }, []);
 
-  // Business rule: nếu sinh viên đã có đơn ở trạng thái departmentApproved → disabled nút Ứng tuyển
-  const hasDepartmentApproved = applications.some((a) => a.status === "departmentApproved");
+  useEffect(() => {
+    fetchData();
+  }, [fetchData]);
 
-  const handleCancel = (id: string) => {
-    setApplications((prev) =>
-      prev.map((a) =>
-        a.id === id ? { ...a, status: "withdrawn" as const } : a
-      )
-    );
+  // Calculate progress timeline based on best application status
+  const getBestApplicationStatus = () => {
+    const priority = ['department_approved', 'offer', 'interview', 'screening', 'applied'];
+    for (const status of priority) {
+      if (applications.some(a => a.status === status)) {
+        return status;
+      }
+    }
+    return applications.length > 0 ? 'applied' : null;
   };
 
-  const totalHours = mockLogEntries.reduce((sum, entry) => sum + entry.hours, 0);
+  const buildTimelineStages = (): TimelineStage[] => {
+    const currentStatus = getBestApplicationStatus();
+    const currentIndex = currentStatus ? statusToStageIndex[currentStatus] ?? 0 : -1;
+    
+    const stages: TimelineStage[] = [
+      { id: '1', label: 'Đã nộp', completed: currentIndex >= 0, current: currentIndex === 0 },
+      { id: '2', label: 'Xét duyệt', completed: currentIndex >= 1, current: currentIndex === 1 },
+      { id: '3', label: 'Phỏng vấn', completed: currentIndex >= 2, current: currentIndex === 2 },
+      { id: '4', label: 'Offer', completed: currentIndex >= 3, current: currentIndex === 3 },
+      { id: '5', label: 'Hoàn tất', completed: currentIndex >= 4, current: currentIndex === 4 },
+    ];
+    
+    return stages;
+  };
+
+  const calculateProgress = () => {
+    const currentStatus = getBestApplicationStatus();
+    if (!currentStatus) return 0;
+    const index = statusToStageIndex[currentStatus] ?? 0;
+    return Math.min(100, ((index + 1) / 5) * 100);
+  };
+
+  // Business rule: nếu sinh viên đã có đơn ở trạng thái department_approved → disabled nút Ứng tuyển
+  const hasDepartmentApproved = applications.some((a) => a.status === "department_approved");
+
+  const handleCancel = async (id: string) => {
+    try {
+      await api.updateApplicationStatus(id, "withdrawn");
+      setApplications((prev) =>
+        prev.map((a) =>
+          a.id === id ? { ...a, status: "withdrawn" } : a
+        )
+      );
+      toast.success("Đã rút đơn thành công!");
+    } catch (err: any) {
+      console.error("Failed to cancel application:", err);
+      toast.error(err?.message || "Không thể rút đơn. Vui lòng thử lại.");
+    }
+  };
+
+  // Transform data for components
+  const transformedLogEntries = logEntries.slice(0, 5).map((entry) => ({
+    id: entry.id,
+    date: new Date(entry.entryDate || entry.createdAt).toLocaleDateString("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }),
+    hours: 0, // LogEntry doesn't have hours, could calculate from duration
+    description: entry.completedWork,
+  }));
+
+  const totalHours = logEntries.length * 40; // Approximate hours per week
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 text-indigo-500 animate-spin" />
+          <p className="text-slate-500">Đang tải dữ liệu...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center gap-4 text-center">
+          <p className="text-red-500">{error}</p>
+          <button onClick={fetchData} className="px-4 py-2 bg-indigo-500 text-white rounded-lg">
+            Thử lại
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Transform applications for ApplicationStatus component
+  const transformedApplications = applications.map((app) => ({
+    id: app.id,
+    positionId: app.positionId,
+    studentId: app.studentId,
+    studentName: "", // Not needed for display
+    company: app.position?.company?.name || "Công ty",
+    position: app.position?.title || "Vị trí",
+    status: app.status as any,
+    appliedDate: new Date(app.appliedAt).toLocaleDateString("vi-VN", {
+      day: "2-digit",
+      month: "2-digit",
+      year: "numeric",
+    }),
+  }));
 
   return (
     <>
@@ -60,7 +210,10 @@ export function StudentDashboardPage() {
         transition={{ duration: 0.4 }}
         className="mb-8"
       >
-        <ProgressTimeline stages={mockTimelineStages} progressPercentage={40} />
+        <ProgressTimeline 
+          stages={buildTimelineStages()} 
+          progressPercentage={calculateProgress()} 
+        />
       </motion.div>
 
       {/* Main content grid */}
@@ -71,7 +224,7 @@ export function StudentDashboardPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
         >
-          <InternshipSuggestions internships={mockInternships} applyDisabled={hasDepartmentApproved} />
+          <InternshipSuggestions applyDisabled={hasDepartmentApproved} />
         </motion.div>
 
         {/* Right column */}
@@ -82,10 +235,10 @@ export function StudentDashboardPage() {
           className="space-y-6"
         >
           <ApplicationStatus
-            applications={applications}
+            applications={transformedApplications}
             onCancel={handleCancel}
           />
-          <InternshipLogPreview entries={mockLogEntries} totalHours={totalHours} />
+          <InternshipLogPreview entries={transformedLogEntries} totalHours={totalHours} />
         </motion.div>
       </div>
     </>

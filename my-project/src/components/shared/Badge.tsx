@@ -76,7 +76,7 @@ export function StatusDot({ status, className }: StatusDotProps) {
 
 // Role Badge
 export interface RoleBadgeProps {
-  role: "student" | "lecturer" | "company" | "admin";
+  role: string;
   className?: string;
 }
 
@@ -98,9 +98,9 @@ export type ApplicationStatusType =
   | "screening"
   | "interview"
   | "offer"
+  | "department_approved"
   | "rejected"
-  | "withdrawn"
-  | "departmentApproved";
+  | "withdrawn";
 
 export interface ApplicationStatusBadgeProps {
   status: ApplicationStatusType;
@@ -112,9 +112,10 @@ const applicationStatusConfig: Record<string, { label: string; variant: BadgeVar
   screening: { label: "Đang xét duyệt", variant: "warning" },
   interview: { label: "Phỏng vấn", variant: "info" },
   offer: { label: "Đề nghị", variant: "success" },
+  department_approved: { label: "Đã duyệt", variant: "purple" },
+  departmentApproved: { label: "Đã duyệt", variant: "purple" },
   rejected: { label: "Từ chối", variant: "danger" },
   withdrawn: { label: "Đã rút đơn", variant: "default" },
-  departmentApproved: { label: "Chờ GV duyệt", variant: "purple" },
 };
 
 export function ApplicationStatusBadge({ status, className }: ApplicationStatusBadgeProps) {

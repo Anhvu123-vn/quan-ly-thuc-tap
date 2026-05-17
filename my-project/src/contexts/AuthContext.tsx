@@ -1,86 +1,122 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
-import type { User, UserRole } from "@/types";
-import { 
-  authLogin as trpcLogin, 
-  authMe as trpcGetMe, 
-  authLogout as trpcLogout,
-  updateUserRole as trpcUpdateRole,
-  needsRoleSelection
-} from "@/lib/trpc";
+import { api } from "@/services/api";
+
+interface User {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  department?: string;
+  phone?: string;
+  createdAt?: string;
+}
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  needsRole: boolean; // Chỉ true khi đã đăng nhập VÀ chưa có role
-  sessionId: string | null;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
-  updateRole: (role: UserRole) => Promise<void>;
   refreshUser: () => Promise<void>;
-  switchRole: (role: UserRole) => void; // DEV: chuyển role nhanh
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
-const SESSION_KEY = "session_id";
 const USER_KEY = "user_data";
+const ACCESS_TOKEN_KEY = "access_token";
+const REFRESH_TOKEN_KEY = "refresh_token";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
     const stored = localStorage.getItem(USER_KEY);
     return stored ? JSON.parse(stored) : null;
   });
-  const [sessionId, setSessionId] = useState<string | null>(() => {
-    return localStorage.getItem(SESSION_KEY);
+  const [accessToken, setAccessToken] = useState<string | null>(() => {
+    return localStorage.getItem(ACCESS_TOKEN_KEY);
+  });
+  const [refreshToken, setRefreshToken] = useState<string | null>(() => {
+    return localStorage.getItem(REFRESH_TOKEN_KEY);
   });
   const [isLoading, setIsLoading] = useState(false);
-  const [initialLoading, setInitialLoading] = useState(true);
 
-  // Check if user needs to select role - CHỈ khi đã đăng nhập VÀ chưa có role
-  const isLoggedIn = !!user;
-  const needsRole = isLoggedIn && needsRoleSelection(user);
+  // Set API token when accessToken changes
+  useEffect(() => {
+    if (accessToken) {
+      api.setToken(accessToken);
+    }
+  }, [accessToken]);
 
   // On mount, try to restore session and fetch current user data
   useEffect(() => {
     const restoreSession = async () => {
-      if (sessionId) {
-        try {
-          const currentUser = await trpcGetMe(sessionId);
-          if (currentUser) {
+      // Wait for token to be available
+      if (!accessToken) return;
+      
+      setIsLoading(true);
+      
+      try {
+        // Ensure token is set before making API call
+        api.setToken(accessToken);
+        const currentUser = await api.getProfile();
+        setUser(currentUser);
+        localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+      } catch (error) {
+        console.error("Failed to restore session:", error);
+        // Token might be expired, try to refresh
+        if (refreshToken) {
+          try {
+            const tokens = await api.refreshToken(refreshToken);
+            setAccessToken(tokens.accessToken);
+            setRefreshToken(tokens.refreshToken);
+            localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
+            localStorage.setItem(REFRESH_TOKEN_KEY, tokens.refreshToken);
+            api.setToken(tokens.accessToken);
+            const currentUser = await api.getProfile();
             setUser(currentUser);
             localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
-          } else {
-            // Session expired or invalid
-            setSessionId(null);
-            localStorage.removeItem(SESSION_KEY);
+          } catch {
+            // Refresh failed, clear session
+            setAccessToken(null);
+            setRefreshToken(null);
+            setUser(null);
+            localStorage.removeItem(ACCESS_TOKEN_KEY);
+            localStorage.removeItem(REFRESH_TOKEN_KEY);
             localStorage.removeItem(USER_KEY);
+            api.setToken(null);
           }
-        } catch (error) {
-          console.error("Failed to restore session:", error);
-          setSessionId(null);
-          localStorage.removeItem(SESSION_KEY);
+        } else {
+          setAccessToken(null);
+          setRefreshToken(null);
+          setUser(null);
+          localStorage.removeItem(ACCESS_TOKEN_KEY);
+          localStorage.removeItem(REFRESH_TOKEN_KEY);
           localStorage.removeItem(USER_KEY);
+          api.setToken(null);
         }
+      } finally {
+        setIsLoading(false);
       }
-      setInitialLoading(false);
     };
 
     restoreSession();
-  }, []);
+  }, [accessToken, refreshToken]);
 
-  // Login with mock tRPC
+  // Login
   const login = useCallback(async (email: string, password: string) => {
     setIsLoading(true);
     
     try {
-      const result = await trpcLogin({ email, password });
+      const result = await api.login(email, password);
       
       setUser(result.user);
-      setSessionId(result.sessionId);
+      setAccessToken(result.accessToken);
+      setRefreshToken(result.refreshToken);
       
-      localStorage.setItem(SESSION_KEY, result.sessionId);
       localStorage.setItem(USER_KEY, JSON.stringify(result.user));
+      localStorage.setItem(ACCESS_TOKEN_KEY, result.accessToken);
+      localStorage.setItem(REFRESH_TOKEN_KEY, result.refreshToken);
+      
+      api.setToken(result.accessToken);
     } catch (error) {
       throw error;
     } finally {
@@ -88,75 +124,50 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
-  // Logout with mock tRPC
+  // Logout
   const logout = useCallback(async () => {
     setIsLoading(true);
     
     try {
-      await trpcLogout(sessionId);
+      if (refreshToken) {
+        await api.logout(refreshToken);
+      }
     } catch (error) {
       console.error("Logout error:", error);
     } finally {
       setUser(null);
-      setSessionId(null);
-      localStorage.removeItem(SESSION_KEY);
+      setAccessToken(null);
+      setRefreshToken(null);
       localStorage.removeItem(USER_KEY);
+      localStorage.removeItem(ACCESS_TOKEN_KEY);
+      localStorage.removeItem(REFRESH_TOKEN_KEY);
+      api.setToken(null);
       setIsLoading(false);
     }
-  }, [sessionId]);
-
-  // Update user role
-  const updateRole = useCallback(async (role: UserRole) => {
-    setIsLoading(true);
-    
-    try {
-      const updatedUser = await trpcUpdateRole(sessionId, { role });
-      
-      setUser(updatedUser);
-      localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
-    } catch (error) {
-      throw error;
-    } finally {
-      setIsLoading(false);
-    }
-  }, [sessionId]);
+  }, [refreshToken]);
 
   // Refresh user data from server
   const refreshUser = useCallback(async () => {
-    if (!sessionId) return;
+    if (!accessToken) return;
 
     try {
-      const currentUser = await trpcGetMe(sessionId);
-      if (currentUser) {
-        setUser(currentUser);
-        localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
-      }
+      const currentUser = await api.getProfile();
+      setUser(currentUser);
+      localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
     } catch (error) {
       console.error("Failed to refresh user:", error);
     }
-  }, [sessionId]);
-
-  // DEV ONLY: Switch role instantly for testing
-  const switchRole = useCallback((role: UserRole) => {
-    if (!user) return;
-    const updatedUser = { ...user, role };
-    setUser(updatedUser);
-    localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
-  }, [user]);
+  }, [accessToken]);
 
   return (
     <AuthContext.Provider
       value={{
         user,
         isAuthenticated: !!user,
-        isLoading: isLoading || initialLoading,
-        needsRole,
-        sessionId,
+        isLoading,
         login,
         logout,
-        updateRole,
         refreshUser,
-        switchRole,
       }}
     >
       {children}

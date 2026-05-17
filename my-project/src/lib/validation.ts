@@ -5,7 +5,7 @@ export const jobPostingSchema = z.object({
   title: z.string().min(3, "Tiêu đề phải có ít nhất 3 ký tự"),
   field: z.string().min(1, "Vui lòng chọn lĩnh vực"),
   location: z.string().min(2, "Địa điểm phải có ít nhất 2 ký tự"),
-  workType: z.enum(["remote", "hybrid", "on-site"], {
+  workType: z.enum(["remote", "hybrid", "onsite"], {
     required_error: "Vui lòng chọn hình thức làm việc",
   }),
   duration: z.string().min(1, "Vui lòng chọn thời hạn"),
@@ -69,7 +69,7 @@ export const studentProfileSchema = z.object({
     .number({ invalid_type_error: "GPA phải là số" })
     .min(0, "GPA tối thiểu là 0")
     .max(4, "GPA tối đa là 4"),
-  skills: z.array(z.string()).min(1, "Vui lòng chọn ít nhất 1 kỹ năng"),
+  skills: z.array(z.string()).optional().default([]),
 });
 
 export type StudentProfileFormValues = z.infer<typeof studentProfileSchema>;

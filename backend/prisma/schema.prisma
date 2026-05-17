@@ -1,0 +1,394 @@
+// ================================================
+// PRISMA SCHEMA - INTERNSHIP MANAGEMENT SYSTEM
+// ================================================
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ================================================
+// ENUMS
+// ================================================
+
+enum UserRole {
+  student
+  lecturer
+  company
+  admin
+}
+
+enum ApplicationStatus {
+  applied
+  screening
+  interview
+  department_approved
+  rejected
+  withdrawn
+}
+
+enum ApprovalStatus {
+  pending
+  in_progress
+  approved
+  rejected
+}
+
+enum ApprovalLevel {
+  department
+  lecturer
+  registrar
+}
+
+enum EvaluationType {
+  midterm
+  final
+  company
+}
+
+enum LogStatus {
+  pending
+  reviewed
+  approved
+}
+
+enum JobStatus {
+  draft
+  active
+  closed
+  paused
+  filled
+}
+
+enum WorkType {
+  remote
+  hybrid
+  onsite
+}
+
+enum LogType {
+  email
+  notification
+  system
+}
+
+enum PositionDuration {
+  one_month
+  two_three_months
+  four_six_months
+  six_plus_months
+}
+
+// ================================================
+// USERS TABLE
+// ================================================
+
+model User {
+  id           String   @id @default(uuid())
+  name         String
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  role         UserRole @default(student)
+  avatar       String?
+  phone        String?
+  department   String?
+  status       String   @default("active")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  studentProfile      StudentProfile?
+  positions           Position[]          @relation("CompanyPositions")
+  applications        Application[]       @relation("StudentApplications")
+  approvalItems       ApprovalItem[]
+  logEntries          LogEntry[]
+  evaluationsReceived Evaluation[]         @relation("EvaluatedStudent")
+  evaluationsGiven    Evaluation[]         @relation("Evaluator")
+  documents           Document[]
+  notifications       Notification[]
+  refreshTokens       RefreshToken[]
+  companyApprovalItems ApprovalItem[]       @relation("CompanyApproval")
+  reviewerApprovalItems ApprovalItem[]     @relation("ReviewerApproval")
+
+  @@map("users")
+  @@index([email])
+  @@index([role])
+  @@index([status])
+}
+
+// ================================================
+// STUDENT PROFILES TABLE
+// ================================================
+
+model StudentProfile {
+  id           String   @id @default(uuid())
+  userId       String   @unique @map("user_id")
+  major        String?
+  gpa          Decimal? @db.Decimal(3, 2)
+  skills       String[]
+  projects     Json?
+  bio          String?
+  resumeUrl    String?  @map("resume_url")
+  transcriptUrl String? @map("transcript_url")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("student_profiles")
+  @@index([userId])
+}
+
+// ================================================
+// POSITIONS TABLE
+// ================================================
+
+model Position {
+  id          String           @id @default(uuid())
+  title       String
+  companyId   String           @map("company_id")
+  location    String?
+  field       String?
+  description String?
+  requirements String[]
+  responsibilities String[]
+  salaryMin   Decimal?         @map("salary_min") @db.Decimal(12, 2)
+  salaryMax   Decimal?         @map("salary_max") @db.Decimal(12, 2)
+  duration    PositionDuration?
+  workType    WorkType         @default(onsite) @map("work_type")
+  slots       Int              @default(1)
+  postedDate  DateTime         @default(now()) @map("posted_date")
+  deadline    DateTime?
+  status      JobStatus        @default(draft)
+  createdAt   DateTime        @default(now()) @map("created_at")
+  updatedAt   DateTime        @updatedAt @map("updated_at")
+
+  // Relations
+  company     User          @relation("CompanyPositions", fields: [companyId], references: [id], onDelete: Cascade)
+  applications Application[]
+  approvalItems ApprovalItem[]
+
+  @@map("positions")
+  @@index([companyId])
+  @@index([status])
+  @@index([field])
+  @@index([location])
+}
+
+// ================================================
+// APPLICATIONS TABLE
+// ================================================
+
+model Application {
+  id          String            @id @default(uuid())
+  positionId  String           @map("position_id")
+  studentId   String           @map("student_id")
+  coverLetter String?          @map("cover_letter")
+  resumeUrl   String?          @map("resume_url")
+  portfolioUrl String?         @map("portfolio_url")
+  status      ApplicationStatus @default(applied)
+  appliedAt   DateTime         @default(now()) @map("applied_at")
+  updatedAt   DateTime         @updatedAt @map("updated_at")
+
+  // Relations
+  position       Position       @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  student        User           @relation("StudentApplications", fields: [studentId], references: [id], onDelete: Cascade)
+  approvalItems  ApprovalItem[]
+  documents      Document[]
+  evaluations    Evaluation[]
+
+  @@unique([positionId, studentId])
+  @@map("applications")
+  @@index([positionId])
+  @@index([studentId])
+  @@index([status])
+}
+
+// ================================================
+// APPROVAL ITEMS TABLE
+// ================================================
+
+model ApprovalItem {
+  id           String         @id @default(uuid())
+  applicationId String?       @map("application_id")
+  studentId    String?        @map("student_id")
+  companyId    String         @map("company_id")
+  positionId   String?        @map("position_id")
+  level        ApprovalLevel
+  status       ApprovalStatus @default(pending)
+  reviewerId   String?        @map("reviewer_id")
+  comments     String?
+  reviewedAt   DateTime?      @map("reviewed_at")
+  createdAt    DateTime       @default(now()) @map("created_at")
+  updatedAt    DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: Cascade)
+  student     User?       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  company     User        @relation("CompanyApproval", fields: [companyId], references: [id], onDelete: Cascade)
+  position    Position?   @relation(fields: [positionId], references: [id], onDelete: Cascade)
+  reviewer    User?       @relation("ReviewerApproval", fields: [reviewerId], references: [id], onDelete: SetNull)
+
+  @@map("approval_items")
+  @@index([applicationId])
+  @@index([studentId])
+  @@index([positionId])
+  @@index([level])
+  @@index([status])
+}
+
+// ================================================
+// LOG ENTRIES TABLE
+// ================================================
+
+model LogEntry {
+  id               String    @id @default(uuid())
+  studentId        String    @map("student_id")
+  weekNumber       Int       @map("week_number")
+  entryDate        DateTime  @map("entry_date")
+  completedWork    String    @map("completed_work")
+  challenges       String?
+  lessonsLearned   String?   @map("lessons_learned")
+  goalsForNextWeek String?   @map("goals_for_next_week")
+  lecturerComment  String?   @map("lecturer_comment")
+  lecturerRating   Int?      @map("lecturer_rating")
+  status           LogStatus @default(pending)
+  createdAt        DateTime  @default(now()) @map("created_at")
+  updatedAt        DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  student User @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, weekNumber])
+  @@map("log_entries")
+  @@index([studentId])
+}
+
+// ================================================
+// EVALUATIONS TABLE
+// ================================================
+
+model Evaluation {
+  id                String         @id @default(uuid())
+  studentId         String         @map("student_id")
+  evaluatorId       String         @map("evaluator_id")
+  applicationId     String?        @map("application_id")
+  evaluationType   EvaluationType @map("evaluation_type")
+  technicalScore    Int            @map("technical_score")
+  attitudeScore     Int            @map("attitude_score")
+  communicationScore Int           @map("communication_score")
+  teamworkScore     Int            @map("teamwork_score")
+  overallScore      Decimal        @map("overall_score") @db.Decimal(3, 2)
+  comments          String?
+  strengths         String[]
+  areasForImprovement String[]     @map("areas_for_improvement")
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+
+  // Relations
+  student      User        @relation("EvaluatedStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  evaluator    User        @relation("Evaluator", fields: [evaluatorId], references: [id], onDelete: Cascade)
+  application  Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@map("evaluations")
+  @@index([studentId])
+  @@index([evaluatorId])
+  @@index([evaluationType])
+}
+
+// ================================================
+// DOCUMENTS TABLE
+// ================================================
+
+model Document {
+  id            String   @id @default(uuid())
+  userId        String   @map("user_id")
+  applicationId String?  @map("application_id")
+  documentType String   @map("document_type")
+  fileName      String   @map("file_name")
+  fileUrl       String   @map("file_url")
+  fileSize      Int?     @map("file_size")
+  mimeType      String?  @map("mime_type")
+  uploadedAt    DateTime @default(now()) @map("uploaded_at")
+
+  // Relations
+  user        User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  application Application? @relation(fields: [applicationId], references: [id], onDelete: SetNull)
+
+  @@map("documents")
+  @@index([userId])
+  @@index([applicationId])
+  @@index([documentType])
+}
+
+// ================================================
+// SYSTEM LOGS TABLE
+// ================================================
+
+model SystemLog {
+  id             String   @id @default(uuid())
+  logType        LogType  @map("log_type")
+  actorId        String?  @map("actor_id")
+  actorName      String?  @map("actor_name")
+  actorRole      String?  @map("actor_role")
+  recipientId    String?  @map("recipient_id")
+  recipientEmail String?  @map("recipient_email")
+  subject        String?
+  message        String?
+  status         String   @default("sent")
+  sentAt         DateTime @default(now()) @map("sent_at")
+  metadata       Json?
+
+  @@map("system_logs")
+  @@index([logType])
+  @@index([actorId])
+  @@index([recipientId])
+  @@index([sentAt])
+}
+
+// ================================================
+// NOTIFICATIONS TABLE
+// ================================================
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  title     String
+  message   String
+  type      String   @default("info")
+  isRead    Boolean  @default(false) @map("is_read")
+  link      String?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+  @@index([userId])
+  @@index([isRead])
+}
+
+// ================================================
+// REFRESH TOKENS TABLE
+// ================================================
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  userId    String   @map("user_id")
+  token     String   @unique
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+  revokedAt DateTime? @map("revoked_at")
+
+  // Relations
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("refresh_tokens")
+  @@index([userId])
+  @@index([token])
+}

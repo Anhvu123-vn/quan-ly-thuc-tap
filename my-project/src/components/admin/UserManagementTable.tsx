@@ -1,11 +1,20 @@
 import { useState, useMemo } from "react";
-import { Search, Edit, UserX, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Edit, UserX, ChevronLeft, ChevronRight, MoreHorizontal } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
-import type { User, UserRole, UserStatus } from "@/types";
+import { RoleBadge } from "@/components/shared/Badge";
+
+interface User {
+  id: string;
+  name?: string;
+  email: string;
+  role: string;
+  department?: string;
+  createdAt?: string;
+}
 
 interface UserManagementTableProps {
   users: User[];
@@ -15,26 +24,15 @@ interface UserManagementTableProps {
 
 const ITEMS_PER_PAGE = 5;
 
-const roleColors: Record<UserRole, string> = {
-  student: "bg-blue-100 text-blue-700",
-  admin: "bg-purple-100 text-purple-700",
-  lecturer: "bg-green-100 text-green-700",
-};
-
-const statusColors: Record<UserStatus, string> = {
-  active: "bg-green-100 text-green-700",
-  inactive: "bg-gray-100 text-gray-700",
-};
-
 export function UserManagementTable({ users, onEdit, onDisable }: UserManagementTableProps) {
   const [search, setSearch] = useState("");
-  const [roleFilter, setRoleFilter] = useState<UserRole | "all">("all");
+  const [roleFilter, setRoleFilter] = useState<string>("all");
   const [currentPage, setCurrentPage] = useState(1);
 
   const filteredUsers = useMemo(() => {
     return users.filter((user) => {
       const matchesSearch =
-        user.name.toLowerCase().includes(search.toLowerCase()) ||
+        (user.name?.toLowerCase() || "").includes(search.toLowerCase()) ||
         user.email.toLowerCase().includes(search.toLowerCase());
       const matchesRole = roleFilter === "all" || user.role === roleFilter;
       return matchesSearch && matchesRole;
@@ -47,16 +45,21 @@ export function UserManagementTable({ users, onEdit, onDisable }: UserManagement
     currentPage * ITEMS_PER_PAGE
   );
 
+  const formatDate = (dateStr?: string) => {
+    if (!dateStr) return "-";
+    return new Date(dateStr).toLocaleDateString("vi-VN");
+  };
+
   return (
     <Card>
       <CardHeader>
         <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <CardTitle className="text-lg">User Management</CardTitle>
+          <CardTitle className="text-lg">Quản lý người dùng</CardTitle>
           <div className="flex flex-col gap-2 sm:flex-row">
             <div className="relative">
-              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-[--color-muted-foreground]" />
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
               <Input
-                placeholder="Search users..."
+                placeholder="Tìm kiếm..."
                 value={search}
                 onChange={(e) => {
                   setSearch(e.target.value);
@@ -68,15 +71,16 @@ export function UserManagementTable({ users, onEdit, onDisable }: UserManagement
             <select
               value={roleFilter}
               onChange={(e) => {
-                setRoleFilter(e.target.value as UserRole | "all");
+                setRoleFilter(e.target.value);
                 setCurrentPage(1);
               }}
-              className="h-10 rounded-md border border-[--color-border] bg-white px-3 text-sm"
+              className="h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
             >
-              <option value="all">All Roles</option>
-              <option value="student">Students</option>
-              <option value="lecturer">Lecturers</option>
-              <option value="admin">Admins</option>
+              <option value="all">Tất cả</option>
+              <option value="student">Sinh viên</option>
+              <option value="lecturer">Giảng viên</option>
+              <option value="company">Doanh nghiệp</option>
+              <option value="admin">Admin</option>
             </select>
           </div>
         </div>
@@ -85,73 +89,41 @@ export function UserManagementTable({ users, onEdit, onDisable }: UserManagement
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-[--color-border]">
-                <th className="py-3 text-left text-sm font-medium text-[--color-muted-foreground]">
-                  User
-                </th>
-                <th className="py-3 text-left text-sm font-medium text-[--color-muted-foreground]">
-                  Role
-                </th>
-                <th className="py-3 text-left text-sm font-medium text-[--color-muted-foreground]">
-                  Status
-                </th>
-                <th className="py-3 text-left text-sm font-medium text-[--color-muted-foreground]">
-                  Joined
-                </th>
-                <th className="py-3 text-right text-sm font-medium text-[--color-muted-foreground]">
-                  Actions
-                </th>
+              <tr className="border-b border-slate-100">
+                <th className="py-3 text-left text-sm font-medium text-slate-500">Người dùng</th>
+                <th className="py-3 text-left text-sm font-medium text-slate-500">Vai trò</th>
+                <th className="py-3 text-left text-sm font-medium text-slate-500">Tham gia</th>
+                <th className="py-3 text-right text-sm font-medium text-slate-500">Hành động</th>
               </tr>
             </thead>
             <tbody>
               {paginatedUsers.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="py-8 text-center text-sm text-[--color-muted-foreground]">
-                    No users found
+                  <td colSpan={4} className="py-8 text-center text-sm text-slate-500">
+                    Không tìm thấy người dùng
                   </td>
                 </tr>
               ) : (
                 paginatedUsers.map((user) => (
-                  <tr key={user.id} className="border-b border-[--color-border] last:border-0">
+                  <tr key={user.id} className="border-b border-slate-50 last:border-0 hover:bg-slate-50/50">
                     <td className="py-3">
                       <div className="flex items-center gap-3">
                         <Avatar className="h-8 w-8">
-                          <AvatarFallback className="text-xs">
-                            {user.name
-                              .split(" ")
-                              .map((n) => n[0])
-                              .join("")
-                              .toUpperCase()}
+                          <AvatarFallback className="text-xs bg-indigo-100 text-indigo-600">
+                            {(user.name?.[0] || user.email[0]).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-medium">{user.name}</p>
-                          <p className="text-xs text-[--color-muted-foreground]">{user.email}</p>
+                          <p className="font-medium">{user.name || "N/A"}</p>
+                          <p className="text-xs text-slate-500">{user.email}</p>
                         </div>
                       </div>
                     </td>
                     <td className="py-3">
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium capitalize",
-                          roleColors[user.role]
-                        )}
-                      >
-                        {user.role}
-                      </span>
+                      <RoleBadge role={user.role} />
                     </td>
-                    <td className="py-3">
-                      <span
-                        className={cn(
-                          "inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium capitalize",
-                          statusColors[user.status]
-                        )}
-                      >
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="py-3 text-sm text-[--color-muted-foreground]">
-                      {user.joinedDate}
+                    <td className="py-3 text-sm text-slate-500">
+                      {formatDate(user.createdAt)}
                     </td>
                     <td className="py-3 text-right">
                       <div className="flex items-center justify-end gap-1">
@@ -159,7 +131,8 @@ export function UserManagementTable({ users, onEdit, onDisable }: UserManagement
                           variant="ghost"
                           size="icon"
                           onClick={() => onEdit?.(user)}
-                          aria-label="Edit user"
+                          aria-label="Sửa"
+                          className="h-8 w-8 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50"
                         >
                           <Edit className="h-4 w-4" />
                         </Button>
@@ -167,7 +140,8 @@ export function UserManagementTable({ users, onEdit, onDisable }: UserManagement
                           variant="ghost"
                           size="icon"
                           onClick={() => onDisable?.(user.id)}
-                          aria-label="Disable user"
+                          aria-label="Vô hiệu hóa"
+                          className="h-8 w-8 text-slate-400 hover:text-red-600 hover:bg-red-50"
                         >
                           <UserX className="h-4 w-4" />
                         </Button>
@@ -183,9 +157,9 @@ export function UserManagementTable({ users, onEdit, onDisable }: UserManagement
         {/* Pagination */}
         {totalPages > 1 && (
           <div className="mt-4 flex items-center justify-between">
-            <p className="text-sm text-[--color-muted-foreground]">
-              Showing {(currentPage - 1) * ITEMS_PER_PAGE + 1} to{" "}
-              {Math.min(currentPage * ITEMS_PER_PAGE, filteredUsers.length)} of {filteredUsers.length}
+            <p className="text-sm text-slate-500">
+              Hiển thị {(currentPage - 1) * ITEMS_PER_PAGE + 1} đến{" "}
+              {Math.min(currentPage * ITEMS_PER_PAGE, filteredUsers.length)} của {filteredUsers.length}
             </p>
             <div className="flex items-center gap-2">
               <Button
@@ -193,17 +167,19 @@ export function UserManagementTable({ users, onEdit, onDisable }: UserManagement
                 size="icon"
                 onClick={() => setCurrentPage(currentPage - 1)}
                 disabled={currentPage === 1}
+                className="h-8 w-8"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>
               <span className="text-sm">
-                Page {currentPage} of {totalPages}
+                Trang {currentPage} / {totalPages}
               </span>
               <Button
                 variant="outline"
                 size="icon"
                 onClick={() => setCurrentPage(currentPage + 1)}
                 disabled={currentPage === totalPages}
+                className="h-8 w-8"
               >
                 <ChevronRight className="h-4 w-4" />
               </Button>

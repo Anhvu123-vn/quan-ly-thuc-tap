@@ -8,62 +8,93 @@ import { ActiveFilters } from "@/components/positions/ActiveFilters";
 import { PositionList } from "@/components/positions/PositionList";
 import { Pagination } from "@/components/positions/Pagination";
 import { useAuth } from "@/contexts/AuthContext";
-import { mockPositions } from "@/data/positions";
-import type { FilterState, Position } from "@/types";
+import { api } from "@/services/api";
+import type { Position } from "@/types";
 
 const ITEMS_PER_PAGE = 9;
 
-// Simulated API fetch with delay
-const fetchPositions = async (): Promise<Position[]> => {
-  // Simulate network delay
-  await new Promise(resolve => setTimeout(resolve, 800));
-  return mockPositions;
+const fetchPositions = async (filters: {
+  page?: number;
+  search?: string;
+  location?: string;
+  workType?: string;
+}): Promise<{ data: Position[]; meta: any }> => {
+  const response = await api.getPositions({
+    page: filters.page || 1,
+    search: filters.search,
+    status: 'active',
+  });
+  
+  console.log('PositionsPage - Full API Response:', JSON.stringify(response, null, 2));
+  
+  // response has structure: { success: true, data: [...], meta: {...} }
+  const positionsArray = response?.data || [];
+  
+  console.log('PositionsPage - positionsArray:', positionsArray);
+  
+  // Transform API response to Position format
+  const positions: Position[] = positionsArray.map((pos: any) => ({
+    id: pos.id,
+    title: pos.title,
+    company: pos.company?.name || "Công ty",
+    location: pos.location || "",
+    duration: pos.duration || "",
+    field: pos.field || "",
+    description: pos.description || "",
+    requirements: pos.requirements || [],
+    responsibilities: pos.responsibilities || [],
+    postedDate: pos.postedDate || pos.createdAt || new Date().toISOString(),
+    deadline: pos.deadline,
+    salaryMin: pos.salaryMin,
+    salaryMax: pos.salaryMax,
+    workType: pos.workType,
+    slots: pos.slots,
+    status: pos.status,
+    applicantCount: pos._count?.applications || 0,
+  }));
+  
+  return { data: positions, meta: response?.meta || {} };
 };
 
 export function PositionsPage() {
   const { isAuthenticated } = useAuth();
-  const [filters, setFilters] = useState<FilterState>({
+  const [filters, setFilters] = useState({
     search: "",
-    location: [],
-    duration: [],
-    field: [],
+    location: [] as string[],
+    duration: [] as string[],
+    field: [] as string[],
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
 
   // TanStack Query for data fetching
-  const { data: positions = [], isLoading, isFetching } = useQuery({
-    queryKey: ['positions'],
-    queryFn: fetchPositions,
-    staleTime: 1000 * 60 * 5, // 5 minutes - data stays fresh
-    gcTime: 1000 * 60 * 10, // 10 minutes - cached data
+  const { data, isLoading, isFetching } = useQuery({
+    queryKey: ['positions', currentPage, filters.search],
+    queryFn: () => fetchPositions({ page: currentPage, search: filters.search }),
+    staleTime: 1000 * 60 * 5,
   });
 
-  // Filter positions based on current filters
+  const positions = data?.data || [];
+
+  // Filter positions locally (for client-side filtering of loaded data)
   const filteredPositions = useMemo(() => {
     return positions.filter((position) => {
-      // Search filter
-      if (filters.search) {
-        const searchLower = filters.search.toLowerCase();
-        const matchesSearch =
-          position.title.toLowerCase().includes(searchLower) ||
-          position.company.toLowerCase().includes(searchLower);
-        if (!matchesSearch) return false;
-      }
-
       // Location filter
-      if (filters.location.length > 0 && !filters.location.includes(position.location)) {
-        return false;
+      if (filters.location.length > 0 && position.location) {
+        const matchLocation = filters.location.some(loc => 
+          position.location.toLowerCase().includes(loc.toLowerCase())
+        );
+        if (!matchLocation) return false;
       }
 
       // Duration filter
-      if (filters.duration.length > 0 && !filters.duration.includes(position.duration)) {
-        return false;
+      if (filters.duration.length > 0 && position.duration) {
+        if (!filters.duration.includes(position.duration)) return false;
       }
 
       // Field filter
-      if (filters.field.length > 0 && !filters.field.includes(position.field)) {
-        return false;
+      if (filters.field.length > 0 && position.field) {
+        if (!filters.field.includes(position.field)) return false;
       }
 
       return true;
@@ -79,42 +110,49 @@ export function PositionsPage() {
   const totalPages = Math.ceil(filteredPositions.length / ITEMS_PER_PAGE);
 
   // Reset page when filters change
-  const handleFilterChange = useCallback((newFilters: FilterState) => {
+  const handleFilterChange = useCallback((newFilters: typeof filters) => {
     setFilters(newFilters);
     setCurrentPage(1);
   }, []);
 
   const handleSearchChange = useCallback((search: string) => {
-    handleFilterChange({ ...filters, search });
-  }, [filters, handleFilterChange]);
+    setFilters(prev => ({ ...prev, search }));
+    setCurrentPage(1);
+  }, []);
 
   const handlePageChange = useCallback((page: number) => {
     setCurrentPage(page);
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, []);
 
-  const handleApply = useCallback((id: string) => {
+  const handleApply = useCallback(async (id: string) => {
     if (!isAuthenticated) {
       window.location.href = "/login";
       return;
     }
-    console.log("Applying to position:", id);
+    try {
+      await api.createApplication({ positionId: id });
+      alert("Ứng tuyển thành công!");
+    } catch (err: any) {
+      alert(err.message || "Không thể ứng tuyển. Vui lòng thử lại.");
+    }
   }, [isAuthenticated]);
 
   const removeFilter = useCallback(
-    (category: keyof Pick<FilterState, "location" | "duration" | "field">, value: string) => {
-      const newFilters = {
-        ...filters,
-        [category]: filters[category].filter((v) => v !== value),
-      };
-      handleFilterChange(newFilters);
+    (category: 'location' | 'duration' | 'field', value: string) => {
+      setFilters(prev => ({
+        ...prev,
+        [category]: prev[category].filter((v) => v !== value),
+      }));
+      setCurrentPage(1);
     },
-    [filters, handleFilterChange]
+    []
   );
 
   const clearAllFilters = useCallback(() => {
-    handleFilterChange({ search: filters.search, location: [], duration: [], field: [] });
-  }, [filters.search, handleFilterChange]);
+    setFilters({ search: filters.search, location: [], duration: [], field: [] });
+    setCurrentPage(1);
+  }, [filters.search]);
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -123,9 +161,9 @@ export function PositionsPage() {
         <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
             <div>
-              <h1 className="text-2xl font-bold text-slate-900">Internship Positions</h1>
+              <h1 className="text-2xl font-bold text-slate-900">Vị trí thực tập</h1>
               <p className="text-sm text-slate-500">
-                Find your next opportunity
+                Tìm kiếm cơ hội thực tập phù hợp với bạn
               </p>
             </div>
             <div className="flex items-center gap-3">
@@ -133,7 +171,7 @@ export function PositionsPage() {
                 <SearchBar
                   value={filters.search}
                   onChange={handleSearchChange}
-                  placeholder="Search by title or company..."
+                  placeholder="Tìm kiếm theo tên vị trí..."
                 />
               </div>
               <Button
@@ -142,7 +180,7 @@ export function PositionsPage() {
                 onClick={() => setFilterPanelOpen(!filterPanelOpen)}
               >
                 <SlidersHorizontal className="h-4 w-4 mr-2" />
-                Filters
+                Bộ lọc
               </Button>
             </div>
           </div>

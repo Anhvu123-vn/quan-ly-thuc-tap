@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
 import {
   Briefcase,
@@ -15,18 +15,45 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, ApplicationStatusBadge } from "@/components/shared/Badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { mockJobPostings, mockApplications } from "@/data/mockData";
+import { useAuth } from "@/contexts/AuthContext";
+import { api } from "@/services/api";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
 
 export function CompanyDashboardPage() {
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const [applications, setApplications] = useState<any[]>([]);
+  const [positions, setPositions] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  // Fetch data from API
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [appsResponse, positionsResponse] = await Promise.all([
+          api.getCompanyApplications(),
+          api.getMyPositions(),
+        ]);
+        // Handle both direct array and wrapped response
+        setApplications(appsResponse?.data || appsResponse || []);
+        setPositions(positionsResponse?.data || positionsResponse || []);
+      } catch (err) {
+        console.error('Failed to fetch dashboard data:', err);
+        setApplications([]);
+        setPositions([]);
+      } finally {
+        setLoading(false);
+      }
+    };
+    fetchData();
+  }, []);
 
   const stats = {
-    totalJobs: mockJobPostings.length,
-    activeJobs: mockJobPostings.filter((j) => j.status === "active").length,
-    totalApplicants: mockJobPostings.reduce((acc, j) => acc + j.applicants, 0),
-    interviews: mockApplications.filter((a) => a.status === "interview").length,
+    totalJobs: positions.length,
+    activeJobs: positions.filter((j) => j.status === "active" || j.status === "ACTIVE").length,
+    totalApplicants: applications.length,
+    interviews: applications.filter((a) => a.status === "interview" || a.status === "INTERVIEW").length,
   };
 
   const statCards = [
@@ -39,13 +66,13 @@ export function CompanyDashboardPage() {
     },
     {
       label: "Ứng viên chờ duyệt",
-      value: mockApplications.filter((a) => a.status === "applied").length,
+      value: applications.filter((a) => a.status === "applied" || a.status === "APPLIED").length,
       icon: Clock,
       color: "bg-amber-100 text-amber-600",
     },
     {
       label: "Sinh viên đang thực tập",
-      value: mockApplications.filter((a) => a.status === "offer").length,
+      value: applications.filter((a) => a.status === "department_approved" || a.status === "DEPARTMENT_APPROVED").length,
       icon: CheckCircle2,
       color: "bg-emerald-100 text-emerald-600",
     },
@@ -57,20 +84,41 @@ export function CompanyDashboardPage() {
     },
   ];
 
-  // Latest applicants (most recent 5)
-  const latestApplicants = [...mockApplications]
-    .sort((a, b) => new Date(b.appliedDate).getTime() - new Date(a.appliedDate).getTime())
+  // Latest applicants (most recent 5) - sort by appliedAt
+  const latestApplicants = [...applications]
+    .sort((a, b) => {
+      const dateA = new Date(a.appliedAt || a.createdAt || 0).getTime();
+      const dateB = new Date(b.appliedAt || b.createdAt || 0).getTime();
+      return dateB - dateA;
+    })
     .slice(0, 5);
 
   // Recruitment pipeline summary
   const pipelineStats = [
-    { label: "Đã nộp", count: mockApplications.filter((a) => a.status === "applied").length, color: "bg-slate-400" },
-    { label: "Xét duyệt", count: mockApplications.filter((a) => a.status === "screening").length, color: "bg-amber-400" },
-    { label: "Phỏng vấn", count: mockApplications.filter((a) => a.status === "interview").length, color: "bg-blue-400" },
-    { label: "Đề nghị", count: mockApplications.filter((a) => a.status === "offer").length, color: "bg-emerald-400" },
+    { label: "Đã nộp", count: applications.filter((a) => (a.status || '').toLowerCase() === "applied").length, color: "bg-slate-400" },
+    { label: "Xét duyệt", count: applications.filter((a) => (a.status || '').toLowerCase() === "screening").length, color: "bg-amber-400" },
+    { label: "Phỏng vấn", count: applications.filter((a) => (a.status || '').toLowerCase() === "interview").length, color: "bg-blue-400" },
+    { label: "Đề nghị", count: applications.filter((a) => (a.status || '').toLowerCase() === "department_approved").length, color: "bg-emerald-400" },
   ];
 
   const maxPipeline = Math.max(...pipelineStats.map((p) => p.count), 1);
+
+  // Helper to get student name from application
+  const getStudentName = (app: any) => {
+    return app.student?.name || app.studentName || "Sinh viên";
+  };
+
+  // Helper to get position title from application
+  const getPositionTitle = (app: any) => {
+    return app.position?.title || app.positionTitle || app.position || "Vị trí";
+  };
+
+  // Helper to format date
+  const formatDate = (date: string | Date | undefined) => {
+    if (!date) return "";
+    const d = new Date(date);
+    return d.toLocaleDateString("vi-VN", { day: "2-digit", month: "2-digit", year: "numeric" });
+  };
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -158,40 +206,52 @@ export function CompanyDashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            {latestApplicants.map((app, index) => (
-              <motion.div
-                key={app.id}
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.05 }}
-                className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
-              >
-                <Avatar className="h-9 w-9 shrink-0">
-                  <AvatarFallback className="text-xs bg-indigo-100 text-indigo-700 font-semibold">
-                    {app.studentName.split(" ").slice(-1)[0][0]}
-                  </AvatarFallback>
-                </Avatar>
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-slate-900 truncate">{app.studentName}</p>
-                  <p className="text-xs text-slate-400 truncate">
-                    {app.company} · {app.position}
-                  </p>
-                </div>
-                <div className="flex items-center gap-2 shrink-0">
-                  <span className="text-xs text-slate-400 hidden sm:block">{app.appliedDate}</span>
-                  <ApplicationStatusBadge status={app.status} />
-                </div>
-                <Button
-                  size="icon"
-                  variant="ghost"
-                  onClick={() => navigate("/company/candidates")}
-                  className="h-7 w-7 shrink-0 text-slate-400 hover:text-indigo-600"
-                  aria-label="View candidate"
+            {loading ? (
+              <div className="text-center py-8 text-slate-400">Đang tải...</div>
+            ) : latestApplicants.length === 0 ? (
+              <div className="text-center py-8 text-slate-400">Chưa có ứng viên nào</div>
+            ) : (
+              latestApplicants.map((app, index) => (
+                <motion.div
+                  key={app.id}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.05 }}
+                  className="flex items-center gap-3 p-3 rounded-xl hover:bg-slate-50 transition-colors cursor-pointer"
+                  onClick={() => navigate(`/applications/${app.id}`)}
                 >
-                  <Eye className="h-3.5 w-3.5" />
-                </Button>
-              </motion.div>
-            ))}
+                  <Avatar className="h-9 w-9 shrink-0">
+                    <AvatarFallback className="text-xs bg-indigo-100 text-indigo-700 font-semibold">
+                      {getStudentName(app).split(" ").slice(-1)[0]?.[0] || "S"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-slate-900 truncate">{getStudentName(app)}</p>
+                    <p className="text-xs text-slate-400 truncate">
+                      {getPositionTitle(app)}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 shrink-0">
+                    <span className="text-xs text-slate-400 hidden sm:block">
+                      {formatDate(app.appliedAt || app.createdAt)}
+                    </span>
+                    <ApplicationStatusBadge status={app.status} />
+                  </div>
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      navigate("/company/candidates");
+                    }}
+                    className="h-7 w-7 shrink-0 text-slate-400 hover:text-indigo-600"
+                    aria-label="View candidate"
+                  >
+                    <Eye className="h-3.5 w-3.5" />
+                  </Button>
+                </motion.div>
+              ))
+            )}
           </CardContent>
         </Card>
 
@@ -226,22 +286,23 @@ export function CompanyDashboardPage() {
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wider mb-3">
                 Lịch phỏng vấn sắp tới
               </p>
-              {mockApplications
-                .filter((a) => a.interviewDate)
-                .map((app) => (
-                  <div
-                    key={app.id}
-                    className="flex items-center gap-2 p-2 rounded-lg bg-blue-50/50 mb-2 last:mb-0"
-                  >
-                    <Calendar className="h-3.5 w-3.5 text-blue-500 shrink-0" />
-                    <div className="min-w-0 flex-1">
-                      <p className="text-xs font-medium text-slate-900 truncate">{app.studentName}</p>
-                      <p className="text-xs text-slate-400">{app.interviewDate}</p>
-                    </div>
-                  </div>
-                ))}
-              {mockApplications.filter((a) => a.interviewDate).length === 0 && (
+              {applications.filter((a) => a.interviewDate).length === 0 ? (
                 <p className="text-xs text-slate-400 text-center py-3">Không có lịch phỏng vấn</p>
+              ) : (
+                applications
+                  .filter((a) => a.interviewDate)
+                  .map((app) => (
+                    <div
+                      key={app.id}
+                      className="flex items-center gap-2 p-2 rounded-lg bg-blue-50/50 mb-2 last:mb-0"
+                    >
+                      <Calendar className="h-3.5 w-3.5 text-blue-500 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-xs font-medium text-slate-900 truncate">{getStudentName(app)}</p>
+                        <p className="text-xs text-slate-400">{formatDate(app.interviewDate)}</p>
+                      </div>
+                    </div>
+                  ))
               )}
             </div>
           </CardContent>

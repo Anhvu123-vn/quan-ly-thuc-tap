@@ -1,7 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from "react-router-dom";
-import { AuthProvider } from "@/contexts/AuthContext";
+import { Toaster } from "sonner";
+import { AuthProvider, useAuth } from "@/contexts/AuthContext";
 import { ProtectedRoute } from "@/components/ProtectedRoute";
 import { LoginPage } from "@/pages/Login";
+import { Loader2 } from "lucide-react";
+import { motion } from "framer-motion";
 import { PositionsPage } from "@/pages/PositionsPage";
 import { PositionDetailPage } from "@/pages/PositionDetailPage";
 import { ApprovalTimelineDemo } from "@/pages/ApprovalTimelineDemo";
@@ -28,6 +31,74 @@ import { AdminUserManagementPage } from "@/pages/admin/AdminUserManagementPage";
 import { AdminAnalyticsPage } from "@/pages/admin/AdminAnalyticsPage";
 import { AdminSystemLogsPage } from "@/pages/admin/AdminSystemLogsPage";
 import { SettingsPage } from "@/pages/Settings";
+
+// Default route: goes to login if unauthenticated, else to role-based dashboard
+function DefaultRoute() {
+  const { isAuthenticated, isLoading, user } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center gap-4"
+        >
+          <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+          <p className="text-sm text-slate-500">Loading...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const roleRedirects: Record<string, string> = {
+    student: "/student",
+    lecturer: "/lecturer",
+    company: "/company",
+    admin: "/admin",
+  };
+
+  const redirectPath = user?.role ? (roleRedirects[user.role] || "/positions") : "/positions";
+  return <Navigate to={redirectPath} replace />;
+}
+
+// Wildcard fallback route
+function CatchAllRoute() {
+  const { isAuthenticated, isLoading, user } = useAuth();
+
+  if (isLoading) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          className="flex flex-col items-center gap-4"
+        >
+          <Loader2 className="h-10 w-10 animate-spin text-indigo-500" />
+          <p className="text-sm text-slate-500">Loading...</p>
+        </motion.div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace />;
+  }
+
+  const roleRedirects: Record<string, string> = {
+    student: "/student",
+    lecturer: "/lecturer",
+    company: "/company",
+    admin: "/admin",
+  };
+
+  const redirectPath = user?.role ? (roleRedirects[user.role] || "/positions") : "/positions";
+  return <Navigate to={redirectPath} replace />;
+}
 
 function App() {
   return (
@@ -62,6 +133,11 @@ function App() {
             } />
             <Route path="/student/profile" element={
               <ProtectedRoute allowedRoles={["student"]}>
+                <StudentProfilePage />
+              </ProtectedRoute>
+            } />
+            <Route path="/student/:studentId/profile" element={
+              <ProtectedRoute allowedRoles={["company", "lecturer", "admin"]}>
                 <StudentProfilePage />
               </ProtectedRoute>
             } />
@@ -165,11 +241,12 @@ function App() {
             } />
           </Route>
 
-          {/* ===== DEFAULT ===== */}
-          <Route path="/" element={<Navigate to="/positions" replace />} />
-          <Route path="*" element={<Navigate to="/positions" replace />} />
+          {/* ===== DEFAULT - redirect based on auth state ===== */}
+          <Route path="/" element={<DefaultRoute />} />
+          <Route path="*" element={<CatchAllRoute />} />
         </Routes>
         <RoleSelectionModal />
+        <Toaster position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>
   );
