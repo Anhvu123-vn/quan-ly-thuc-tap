@@ -4,7 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LogsService } from '../logs/logs.service';
-import { RegisterDto, LoginDto } from './dto/auth.dto';
+import { RegisterDto, LoginDto, UserRole } from './dto/auth.dto';
 
 @Injectable()
 export class AuthService {
@@ -27,6 +27,9 @@ export class AuthService {
     // Hash password
     const passwordHash = await bcrypt.hash(dto.password, 10);
 
+    // For companies, default status is pending until approved by admin
+    const userStatus = dto.role === UserRole.COMPANY ? 'pending' : 'active';
+
     // Create user
     const user = await this.prisma.user.create({
       data: {
@@ -36,6 +39,7 @@ export class AuthService {
         role: dto.role,
         department: dto.department,
         phone: dto.phone,
+        status: userStatus,
       },
       select: {
         id: true,
@@ -44,15 +48,10 @@ export class AuthService {
         role: true,
         department: true,
         phone: true,
+        status: true,
         createdAt: true,
       },
     });
-
-    // Generate tokens
-    const tokens = await this.generateTokens(user.id, user.email, user.role);
-
-    // Save refresh token
-    await this.saveRefreshToken(user.id, tokens.refreshToken);
 
     // Log new user registration
     await this.logsService.logAction({
@@ -64,6 +63,21 @@ export class AuthService {
       message: `Người dùng "${user.name}" (${user.role}) đã đăng ký tài khoản mới với email "${user.email}".`,
       metadata: { userId: user.id, role: user.role, department: user.department },
     });
+
+    // Companies must be approved by admin before they can log in — do not issue tokens
+    if (dto.role === UserRole.COMPANY) {
+      return {
+        success: true,
+        data: {
+          user,
+          message: 'Đăng ký thành công. Tài khoản đang chờ phê duyệt bởi quản trị viên.',
+        },
+      };
+    }
+
+    // Generate tokens for non-company users (students, lecturers, admins)
+    const tokens = await this.generateTokens(user.id, user.email, user.role);
+    await this.saveRefreshToken(user.id, tokens.refreshToken);
 
     return {
       success: true,
@@ -85,6 +99,16 @@ export class AuthService {
     const isPasswordValid = await bcrypt.compare(dto.password, user.passwordHash);
     if (!isPasswordValid) {
       throw new UnauthorizedException('Invalid credentials');
+    }
+
+    // Block login for pending companies (not yet approved)
+    if (user.role === 'company' && user.status === 'pending') {
+      throw new UnauthorizedException('Tài khoản của bạn chưa được phê duyệt. Vui lòng chờ quản trị viên kích hoạt.');
+    }
+
+    // Block login for rejected companies
+    if (user.role === 'company' && user.status === 'rejected') {
+      throw new UnauthorizedException('Tài khoản đã bị từ chối. Vui lòng liên hệ quản trị viên.');
     }
 
     const tokens = await this.generateTokens(user.id, user.email, user.role);

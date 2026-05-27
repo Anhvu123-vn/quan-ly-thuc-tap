@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { useNavigate, useLocation } from "react-router-dom";
+import { useNavigate, useLocation, Link } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -127,6 +127,27 @@ export function LoginPage() {
                 )}
               </Button>
             </form>
+
+            <div className="relative">
+              <div className="absolute inset-0 flex items-center">
+                <div className="w-full border-t border-slate-200" />
+              </div>
+              <div className="relative flex justify-center text-xs uppercase">
+                <span className="bg-white px-2 text-slate-400">or</span>
+              </div>
+            </div>
+
+            <div className="text-center">
+              <p className="text-sm text-slate-500">
+                Bạn là doanh nghiệp?{" "}
+                <Link
+                  to="/register/company"
+                  className="font-medium text-indigo-600 hover:text-indigo-700 transition-colors"
+                >
+                  Đăng ký tài khoản doanh nghiệp
+                </Link>
+              </p>
+            </div>
           </CardContent>
         </Card>
       </motion.div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { useForm } from "react-hook-form";
 import { motion } from "framer-motion";
 import {
@@ -13,6 +14,10 @@ import {
   AlertCircle,
   Loader2,
   X,
+  Upload,
+  UserCheck,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +36,17 @@ interface User {
   department?: string;
   phone?: string;
   createdAt?: string;
+}
+
+interface LecturerAssignment {
+  id: string;
+  lecturerId: string;
+  studentId: string;
+  batchId: string | null;
+  status: string;
+  lecturer: { id: string; name: string; email: string };
+  student: { id: string; name: string; email: string; phone?: string };
+  batch: { id: string; name: string; semester: string; academicYear: string } | null;
 }
 
 const ROLE_OPTIONS = [
@@ -325,6 +341,7 @@ function EditUserModal({ isOpen, onClose, onSuccess, user }: EditUserModalProps)
 // Main Page
 export function AdminUserManagementPage() {
   const { isAuthenticated, isLoading: authLoading } = useAuth();
+  const navigate = useNavigate();
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("all");
@@ -334,6 +351,11 @@ export function AdminUserManagementPage() {
   const [editTarget, setEditTarget] = useState<User | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<User | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Lecturer assignments
+  const [assignments, setAssignments] = useState<LecturerAssignment[]>([]);
+  const [loadingAssignments, setLoadingAssignments] = useState(false);
+  const [assignmentsExpanded, setAssignmentsExpanded] = useState<Record<string, boolean>>({});
 
   // Calculate stats from users array
   const stats = {
@@ -364,8 +386,23 @@ export function AdminUserManagementPage() {
     }
   };
 
+  const fetchAssignments = async () => {
+    try {
+      setLoadingAssignments(true);
+      const response = await api.getLecturerAssignments();
+      // API service unwraps { success, data, meta } so response is the data array directly
+      const assignmentsData = Array.isArray(response) ? response : (response?.data || []);
+      setAssignments(assignmentsData);
+    } catch (err) {
+      console.error("Failed to fetch assignments:", err);
+    } finally {
+      setLoadingAssignments(false);
+    }
+  };
+
   useEffect(() => {
     fetchUsers();
+    fetchAssignments();
   }, [isAuthenticated]);
 
   const tabs = [
@@ -374,6 +411,7 @@ export function AdminUserManagementPage() {
     { id: "lecturer", label: "Giảng viên", badge: stats.lecturers },
     { id: "company", label: "Doanh nghiệp", badge: stats.companies },
     { id: "admin", label: "Admin", badge: stats.admins },
+    { id: "assignment", label: "Phân công GV", badge: assignments.length },
   ];
 
   const filteredUsers = users.filter((user) => {
@@ -383,6 +421,25 @@ export function AdminUserManagementPage() {
       user.email?.toLowerCase().includes(searchQuery.toLowerCase());
     return matchesTab && matchesSearch;
   });
+
+  // Group assignments by lecturer for the assignments tab
+  const assignmentsByLecturer = assignments.reduce<Record<string, LecturerAssignment[]>>((acc, a) => {
+    if (!acc[a.lecturerId]) acc[a.lecturerId] = [];
+    acc[a.lecturerId].push(a);
+    return acc;
+  }, {});
+
+  // Map studentId → lecturer name for quick lookup in user table
+  const studentLecturerMap = assignments.reduce<Record<string, string>>((acc, a) => {
+    acc[a.studentId] = a.lecturer.name;
+    return acc;
+  }, {});
+
+  const toggleLecturer = (lecturerId: string) => {
+    setAssignmentsExpanded((prev) => ({ ...prev, [lecturerId]: !prev[lecturerId] }));
+  };
+
+  const isAssignmentTab = activeTab === "assignment";
 
   const handleEdit = (user: User) => {
     setEditTarget(user);
@@ -420,6 +477,10 @@ export function AdminUserManagementPage() {
           <UserPlus className="h-4 w-4 mr-2" />
           Thêm người dùng
         </Button>
+        <Button onClick={() => navigate("/admin/users/import")} variant="outline" className="border-indigo-200 text-indigo-600 hover:bg-indigo-50 gap-2">
+          <Upload className="h-4 w-4" />
+          Nhập hàng loạt
+        </Button>
       </div>
 
       {/* Stats - calculated from users data */}
@@ -453,13 +514,93 @@ export function AdminUserManagementPage() {
       {/* Tabs & Search */}
       <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center justify-between">
         <Tabs tabs={tabs} activeTab={activeTab} onChange={setActiveTab} />
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
-          <Input placeholder="Tìm kiếm..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
-        </div>
+        {!isAssignmentTab && (
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+            <Input placeholder="Tìm kiếm..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="pl-10" />
+          </div>
+        )}
       </div>
 
-      {/* User Table */}
+      {/* Lecturer Assignments Tab */}
+      {isAssignmentTab ? (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            {loadingAssignments ? (
+              <div className="flex items-center justify-center p-12">
+                <Loader2 className="h-8 w-8 animate-spin text-indigo-500" />
+              </div>
+            ) : Object.keys(assignmentsByLecturer).length === 0 ? (
+              <div className="flex flex-col items-center justify-center p-12 text-center">
+                <UserCheck className="h-12 w-12 text-slate-300 mb-3" />
+                <p className="text-slate-500 font-medium">Chưa có phân công giảng viên</p>
+                <p className="text-slate-400 text-sm mt-1">Sinh viên được phân công sẽ hiển thị tại đây.</p>
+              </div>
+            ) : (
+              Object.entries(assignmentsByLecturer).map(([lecturerId, lecturerAssignments]) => {
+                const lecturer = lecturerAssignments[0].lecturer;
+                const isExpanded = !!assignmentsExpanded[lecturerId];
+                return (
+                  <div key={lecturerId} className="border-b border-slate-100 last:border-0">
+                    {/* Lecturer row */}
+                    <div
+                      className="flex items-center gap-4 p-4 cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => toggleLecturer(lecturerId)}
+                    >
+                      <div className="h-10 w-10 rounded-full bg-gradient-to-br from-emerald-400 to-teal-600 flex items-center justify-center text-white font-semibold text-sm shrink-0">
+                        {lecturer.name?.[0] || "?"}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium text-slate-900 text-sm">{lecturer.name}</p>
+                        <p className="text-xs text-slate-500">{lecturer.email}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="inline-flex items-center rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-medium text-emerald-700 border border-emerald-100">
+                          {lecturerAssignments.length} sinh viên
+                        </span>
+                        {isExpanded
+                          ? <ChevronDown className="h-4 w-4 text-slate-400" />
+                          : <ChevronRight className="h-4 w-4 text-slate-400" />
+                        }
+                      </div>
+                    </div>
+
+                    {/* Student rows */}
+                    {isExpanded && (
+                      <div className="border-t border-slate-100 bg-slate-50/50">
+                        {lecturerAssignments.map((a) => (
+                          <div key={a.id} className="flex items-center gap-4 px-4 py-3 pl-8 border-b border-slate-100 last:border-0">
+                            <div className="h-8 w-8 rounded-full bg-gradient-to-br from-indigo-400 to-violet-600 flex items-center justify-center text-white font-semibold text-xs shrink-0">
+                              {a.student.name?.[0] || "?"}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-medium text-slate-800">{a.student.name}</p>
+                              <p className="text-xs text-slate-500">{a.student.email}</p>
+                            </div>
+                            <div className="text-right shrink-0">
+                              <p className="text-xs text-slate-500">{a.batch?.name}</p>
+                              <p className="text-xs text-slate-400">{a.batch?.semester} {a.batch?.academicYear}</p>
+                            </div>
+                            <span className={cn(
+                              "inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium shrink-0",
+                              a.status === "active"
+                                ? "bg-green-50 text-green-700 border border-green-100"
+                                : "bg-slate-100 text-slate-500 border border-slate-200"
+                            )}>
+                              {a.status === "active" ? "Đang hoạt động" : a.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      ) : (
+      /* User Table */
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           {loading || authLoading ? (
@@ -476,6 +617,7 @@ export function AdminUserManagementPage() {
                 <tr className="border-b border-slate-100 bg-slate-50">
                   <th className="text-left p-4 text-xs font-medium text-slate-500 uppercase">Người dùng</th>
                   <th className="text-left p-4 text-xs font-medium text-slate-500 uppercase">Vai trò</th>
+                  <th className="text-left p-4 text-xs font-medium text-slate-500 uppercase">Giảng viên phụ trách</th>
                   <th className="text-left p-4 text-xs font-medium text-slate-500 uppercase">Ngày tham gia</th>
                   <th className="text-right p-4 text-xs font-medium text-slate-500 uppercase">Hành động</th>
                 </tr>
@@ -483,7 +625,7 @@ export function AdminUserManagementPage() {
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={4} className="p-8 text-center text-sm text-slate-400">
+                    <td colSpan={5} className="p-8 text-center text-sm text-slate-400">
                       Không tìm thấy người dùng nào
                     </td>
                   </tr>
@@ -509,6 +651,22 @@ export function AdminUserManagementPage() {
                         </div>
                       </td>
                       <td className="p-4"><RoleBadge role={user.role} /></td>
+                      <td className="p-4">
+                        {user.role === "student" ? (
+                          studentLecturerMap[user.id] ? (
+                            <span className="inline-flex items-center gap-1.5 text-xs text-emerald-700 font-medium">
+                              <span className="h-5 w-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-[10px] font-bold shrink-0">
+                                {studentLecturerMap[user.id]?.[0] || "?"}
+                              </span>
+                              {studentLecturerMap[user.id]}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400 italic">Chưa phân công</span>
+                          )
+                        ) : (
+                          <span className="text-xs text-slate-300">—</span>
+                        )}
+                      </td>
                       <td className="p-4 text-sm text-slate-500">{formatDate(user.createdAt)}</td>
                       <td className="p-4 text-right">
                         <div className="flex items-center justify-end gap-1.5">
@@ -528,6 +686,7 @@ export function AdminUserManagementPage() {
           )}
         </div>
       </div>
+      )}
 
       {/* Modals */}
       <AddUserModal isOpen={addModalOpen} onClose={() => setAddModalOpen(false)} onSuccess={fetchUsers} />

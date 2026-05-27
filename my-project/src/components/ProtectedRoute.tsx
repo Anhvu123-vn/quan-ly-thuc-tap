@@ -9,7 +9,7 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, isLoading, user, needsRole } = useAuth();
+  const { isAuthenticated, isLoading, user } = useAuth();
   const location = useLocation();
 
   if (isLoading) {
@@ -35,16 +35,15 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   }
 
   // Check role-based access if specified
-  if (allowedRoles && user?.role && !allowedRoles.includes(user.role)) {
-    // Redirect to appropriate dashboard based on role
+  if (allowedRoles && user && user.role && !allowedRoles.includes(user.role as string)) {
     const roleRedirects: Record<string, string> = {
       student: "/student",
-      lecturer: "/dashboard",
-      company: "/dashboard",
+      lecturer: "/lecturer",
+      company: "/company",
       admin: "/admin",
     };
-    
-    const redirectPath = roleRedirects[user.role] || "/dashboard";
+
+    const redirectPath = roleRedirects[user.role] || "/positions";
     return <Navigate to={redirectPath} replace />;
   }
 

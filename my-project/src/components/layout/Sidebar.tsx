@@ -1,8 +1,8 @@
 import { NavLink, useNavigate } from "react-router-dom";
-import { 
+import {
   User, Settings, LogOut, Briefcase, Shield, Sparkles,
   BookOpen, BarChart3, ClipboardCheck, MessageSquare, Star,
-  Building2, Users as UsersIcon, FileText, Download
+  Building2, Users as UsersIcon, FileText, Download, Upload, CalendarDays, Building, UserCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -38,6 +38,7 @@ const navItemsByRole: Record<string, NavItem[]> = {
     { to: "/positions", icon: Briefcase, label: "Vị trí thực tập", exact: true },
     { to: "/lecturer/dashboard", icon: User, label: "Dashboard", exact: true },
     { to: "/lecturer/approval", icon: ClipboardCheck, label: "Phê duyệt đơn", roles: ["lecturer", "admin"] },
+    { to: "/lecturer/students", icon: UsersIcon, label: "Sinh viên của tôi", roles: ["lecturer", "admin"] },
     { to: "/lecturer/feedback", icon: MessageSquare, label: "Feedback Hub", roles: ["lecturer"] },
     { to: "/lecturer/evaluation", icon: Star, label: "Chấm điểm", roles: ["lecturer"] },
     { to: "/settings", icon: Settings, label: "Cài đặt" },
@@ -53,7 +54,10 @@ const navItemsByRole: Record<string, NavItem[]> = {
   admin: [
     { to: "/positions", icon: Briefcase, label: "Vị trí thực tập", exact: true },
     { to: "/admin", icon: Shield, label: "Dashboard", exact: true },
+    { to: "/admin/batches", icon: CalendarDays, label: "Đợt thực tập", roles: ["admin"] },
+    { to: "/admin/lecturer-assignment", icon: UserCheck, label: "Phân công GV", roles: ["admin"] },
     { to: "/admin/users", icon: UsersIcon, label: "Quản lý người dùng", roles: ["admin"] },
+    { to: "/admin/users/import", icon: Upload, label: "Nhập hàng loạt", roles: ["admin"] },
     { to: "/admin/analytics", icon: BarChart3, label: "Analytics", roles: ["admin"] },
     { to: "/admin/logs", icon: FileText, label: "System Logs", roles: ["admin"] },
     { to: "/settings", icon: Settings, label: "Cài đặt" },

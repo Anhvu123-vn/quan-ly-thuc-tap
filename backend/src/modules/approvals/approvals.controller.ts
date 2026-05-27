@@ -17,8 +17,8 @@ export class ApprovalsController {
   @UseGuards(RolesGuard)
   @Roles(UserRole.LECTURER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Get approvals' })
-  async findAll(@Query() query: any) {
-    return this.approvalsService.findAll(query);
+  async findAll(@Query() query: any, @Request() req: any) {
+    return this.approvalsService.findAll(query, req.user.sub, req.user.role);
   }
 
   @Get(':id')
@@ -42,6 +42,6 @@ export class ApprovalsController {
   @Roles(UserRole.LECTURER, UserRole.ADMIN)
   @ApiOperation({ summary: 'Get my pending approvals' })
   async getMyPendingApprovals(@Request() req: any) {
-    return this.approvalsService.getMyPendingApprovals(req.user.sub);
+    return this.approvalsService.getMyPendingApprovals(req.user.sub, req.user.role);
   }
 }

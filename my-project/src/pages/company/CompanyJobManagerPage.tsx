@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
+import { useForm } from "react-hook-form";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Plus,
   Edit,
@@ -8,6 +9,12 @@ import {
   Search,
   Briefcase,
   Loader2,
+  Building2,
+  CheckCircle2,
+  XCircle,
+  AlertTriangle,
+  X,
+  CalendarDays,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -17,6 +24,7 @@ import { JobPostingModal } from "@/components/company/JobPostingModal";
 import { api } from "@/services/api";
 import { cn } from "@/lib/utils";
 import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
 
 const ITEMS_PER_PAGE = 5;
 
@@ -57,6 +65,149 @@ const getStatusColor = (status: string) => {
   return statusColors[s] || statusColors.closed;
 };
 
+// Register for Batch Modal
+function RegisterBatchModal({
+  isOpen,
+  onClose,
+  onSuccess,
+  activeBatches,
+}: {
+  isOpen: boolean;
+  onClose: () => void;
+  onSuccess: (batchId: string) => void;
+  activeBatches: any[];
+}) {
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [selectedBatch, setSelectedBatch] = useState("");
+  const [maxStudents, setMaxStudents] = useState(5);
+
+  const onValid = async () => {
+    if (!selectedBatch) {
+      setError("Vui lòng chọn đợt thực tập");
+      return;
+    }
+    setIsSubmitting(true);
+    setError("");
+    try {
+      await api.registerCompanyForBatch(selectedBatch, maxStudents);
+      toast.success("Đăng ký tham gia thành công! Vui lòng chờ admin phê duyệt.");
+      onSuccess(selectedBatch);
+      onClose();
+    } catch (err: any) {
+      setError(err.message || "Đăng ký thất bại");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  if (!isOpen) return null;
+
+  return (
+    <>
+      <motion.div
+        initial={{ opacity: 0 }} animate={{ opacity: 1 }} onClick={onClose}
+        className="fixed inset-0 z-50 bg-black/40 backdrop-blur-sm"
+      />
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95, y: 10 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        className="fixed inset-0 z-50 flex items-center justify-center p-4 pointer-events-none"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md overflow-hidden pointer-events-auto">
+          <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-amber-100 text-amber-600">
+                <Building2 className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-semibold text-slate-900">Đăng ký tham gia đợt thực tập</h3>
+                <p className="text-xs text-slate-500">Công ty cần được admin phê duyệt để đăng tin</p>
+              </div>
+            </div>
+            <button onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg text-slate-400 hover:text-slate-600 hover:bg-slate-100">
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <div className="px-6 py-5 space-y-4">
+            {error && (
+              <div className="p-3 rounded-xl bg-red-50 text-sm text-red-600 border border-red-100 flex items-center gap-2">
+                <AlertTriangle className="h-4 w-4 shrink-0" />
+                {error}
+              </div>
+            )}
+
+            {activeBatches.length === 0 ? (
+              <div className="text-center py-4 text-sm text-slate-500">
+                Hiện không có đợt thực tập nào. Vui lòng liên hệ admin để mở đợt mới.
+              </div>
+            ) : (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Chọn đợt thực tập <span className="text-red-500">*</span></label>
+                  <select
+                    value={selectedBatch}
+                    onChange={(e) => setSelectedBatch(e.target.value)}
+                    className="h-10 w-full rounded-md border border-slate-200 bg-white px-3 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-400"
+                  >
+                    <option value="">-- Chọn đợt thực tập --</option>
+                    {activeBatches.map((b: any) => {
+                      const statusLabel = b.status === 'active' ? 'Đang hoạt động' : 'Sắp diễn ra';
+                      return (
+                        <option key={b.id} value={b.id}>
+                          {b.name} ({b.semester} {b.academicYear}) — {statusLabel}
+                        </option>
+                      );
+                    })}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Số sinh viên tối đa nhận trong đợt</label>
+                  <Input
+                    type="number"
+                    min={1}
+                    max={50}
+                    value={maxStudents}
+                    onChange={(e) => setMaxStudents(Number(e.target.value))}
+                    placeholder="VD: 5"
+                  />
+                  <p className="text-xs text-slate-400 mt-1">Số lượng sinh viên tối đa công ty có thể nhận thực tập trong đợt này</p>
+                </div>
+              </>
+            )}
+          </div>
+
+          <div className="px-6 py-4 border-t border-slate-100 flex gap-3 bg-slate-50/50">
+            <Button variant="outline" onClick={onClose} className="flex-1">Huỷ</Button>
+            <Button onClick={onValid} disabled={isSubmitting || activeBatches.length === 0} className="flex-1 bg-amber-500 hover:bg-amber-600">
+              {isSubmitting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Đăng ký"}
+            </Button>
+          </div>
+        </div>
+      </motion.div>
+    </>
+  );
+}
+
+// Company batch status badge
+function CompanyBatchStatusBadge({ status }: { status: string }) {
+  const map: Record<string, { label: string; color: string; icon: typeof Clock }> = {
+    pending: { label: "Chờ duyệt", color: "bg-amber-50 text-amber-700 border-amber-200", icon: AlertTriangle },
+    approved: { label: "Đã duyệt", color: "bg-green-50 text-green-700 border-green-200", icon: CheckCircle2 },
+    rejected: { label: "Từ chối", color: "bg-red-50 text-red-700 border-red-200", icon: XCircle },
+  };
+  const info = map[status] || { label: status, color: "bg-slate-100 text-slate-600", icon: AlertTriangle };
+  const Icon = info.icon;
+  return (
+    <span className={cn("inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border", info.color)}>
+      <Icon className="h-3 w-3" />
+      {info.label}
+    </span>
+  );
+}
+
 export function CompanyJobManagerPage() {
   const navigate = useNavigate();
   const [positions, setPositions] = useState<Position[]>([]);
@@ -66,16 +217,53 @@ export function CompanyJobManagerPage() {
   const [statusFilter, setStatusFilter] = useState<"all" | "active" | "draft" | "paused" | "closed">("all");
   const [currentPage, setCurrentPage] = useState(1);
 
+  // Batch registration state
+  const [myCompanyBatches, setMyCompanyBatches] = useState<any[]>([]);
+  const [activeBatches, setActiveBatches] = useState<any[]>([]);
+  const [registerModalOpen, setRegisterModalOpen] = useState(false);
+  const [myBatchesLoading, setMyBatchesLoading] = useState(true);
+  const [allBatchesLoading, setAllBatchesLoading] = useState(true);
+
   // Modal state
   const [modalOpen, setModalOpen] = useState(false);
   const [editPosition, setEditPosition] = useState<Position | null>(null);
+
+  // Fetch my company batch approvals
+  const fetchMyCompanyBatches = useCallback(async () => {
+    setMyBatchesLoading(true);
+    try {
+      const data = await api.getMyCompanyBatches();
+      console.log('[CompanyJobManager] myCompanyBatches:', data);
+      setMyCompanyBatches(Array.isArray(data) ? data : []);
+    } catch (err) {
+      console.error('[CompanyJobManager] fetchMyCompanyBatches error:', err);
+      setMyCompanyBatches([]);
+    } finally {
+      setMyBatchesLoading(false);
+    }
+  }, []);
+
+  // Fetch all batches that are not closed (upcoming + active) for registration
+  const fetchActiveBatches = useCallback(async () => {
+    setAllBatchesLoading(true);
+    try {
+      const result = await api.getBatches({ limit: 50 });
+      console.log('[CompanyJobManager] activeBatches from API:', result);
+      const allBatches = result || [];
+      setActiveBatches(allBatches.filter((b: any) => b.status !== 'closed'));
+    } catch (err) {
+      console.error('[CompanyJobManager] fetchActiveBatches error:', err);
+      setActiveBatches([]);
+    } finally {
+      setAllBatchesLoading(false);
+    }
+  }, []);
 
   const fetchPositions = useCallback(async () => {
     setIsLoading(true);
     setError(null);
     try {
       const response = await api.getMyPositions();
-      // Handle both direct array and wrapped response { data: [...] }
       const positionsData = response?.data || response || [];
       setPositions(Array.isArray(positionsData) ? positionsData : []);
     } catch (err) {
@@ -87,8 +275,17 @@ export function CompanyJobManagerPage() {
   }, []);
 
   useEffect(() => {
+    fetchMyCompanyBatches();
+    fetchActiveBatches();
     fetchPositions();
-  }, [fetchPositions]);
+  }, [fetchPositions, fetchMyCompanyBatches, fetchActiveBatches]);
+
+  // Check if company is approved for any active batch that allows posting
+  const approvedForActive = myCompanyBatches.find(
+    (cb) => cb.batch?.status === 'active' && cb.batch?.allowCompanyPosting && cb.status === 'approved'
+  );
+  const pendingBatches = myCompanyBatches.filter((cb) => cb.status === 'pending');
+  const rejectedBatches = myCompanyBatches.filter((cb) => cb.status === 'rejected');
 
   const filteredPositions = positions.filter((position) => {
     const matchesSearch =
@@ -153,6 +350,10 @@ export function CompanyJobManagerPage() {
   };
 
   const handleOpenNew = () => {
+    if (!approvedForActive) {
+      setRegisterModalOpen(true);
+      return;
+    }
     setEditPosition(null);
     setModalOpen(true);
   };
@@ -184,6 +385,117 @@ export function CompanyJobManagerPage() {
           Đăng tin mới
         </Button>
       </div>
+
+      {/* Loading batches */}
+      {(myBatchesLoading || allBatchesLoading) && (
+        <div className="flex items-center justify-center py-8 gap-2 text-sm text-slate-500">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Đang tải thông tin đợt thực tập...
+        </div>
+      )}
+
+      {/* No batches available at all */}
+      {!myBatchesLoading && !allBatchesLoading && myCompanyBatches.length === 0 && activeBatches.length === 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-slate-50 border border-slate-200 rounded-xl p-6 flex items-start gap-4"
+        >
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-slate-100">
+            <CalendarDays className="h-5 w-5 text-slate-500" />
+          </div>
+          <div className="flex-1">
+            <p className="font-semibold text-slate-700 text-sm">Chưa có đợt thực tập nào</p>
+            <p className="text-slate-500 text-sm mt-1">
+              Hiện chưa có đợt thực tập nào được mở. Vui lòng liên hệ quản trị viên để tạo đợt thực tập trước khi đăng tin tuyển dụng.
+            </p>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Company not yet registered for any batch — show regardless of whether batches exist */}
+      {!myBatchesLoading && !allBatchesLoading && !approvedForActive && myCompanyBatches.length === 0 && activeBatches.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-start gap-3"
+        >
+          <AlertTriangle className="h-5 w-5 text-amber-600 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-semibold text-amber-800 text-sm">Công ty chưa được phê duyệt tham gia đợt thực tập nào</p>
+            <p className="text-amber-700 text-sm mt-0.5">Bạn cần đăng ký và được admin phê duyệt trước khi có thể đăng tin tuyển dụng.</p>
+            <Button
+              size="sm"
+              className="mt-3 bg-amber-500 hover:bg-amber-600 text-white"
+              onClick={() => setRegisterModalOpen(true)}
+            >
+              <Building2 className="h-4 w-4 mr-1" />
+              Đăng ký tham gia đợt thực tập
+            </Button>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Pending registration status */}
+      {!myBatchesLoading && !allBatchesLoading && pendingBatches.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-blue-50 border border-blue-200 rounded-xl p-4 flex items-start gap-3"
+        >
+          <AlertTriangle className="h-5 w-5 text-blue-600 mt-0.5 shrink-0" />
+          <div className="flex-1">
+            <p className="font-semibold text-blue-800 text-sm">Đang chờ phê duyệt</p>
+            <div className="mt-2 space-y-1">
+              {pendingBatches.map((cb: any) => (
+                <div key={cb.id} className="flex items-center gap-2">
+                  <CompanyBatchStatusBadge status={cb.status} />
+                  <span className="text-sm text-blue-700">{cb.batch?.name}</span>
+                </div>
+              ))}
+            </div>
+            <p className="text-blue-700 text-xs mt-2">Vui lòng chờ admin phê duyệt. Bạn có thể đăng ký nhiều đợt cùng lúc.</p>
+          </div>
+        </motion.div>
+      )}
+
+      {/* Rejected registration status */}
+      {!myBatchesLoading && !allBatchesLoading && rejectedBatches.length > 0 && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-red-50 border border-red-200 rounded-xl p-4"
+        >
+          <p className="font-semibold text-red-800 text-sm flex items-center gap-2">
+            <XCircle className="h-4 w-4" />
+            Đăng ký bị từ chối
+          </p>
+          <div className="mt-2 space-y-1">
+            {rejectedBatches.map((cb: any) => (
+              <div key={cb.id} className="flex items-center gap-2 text-sm">
+                <CompanyBatchStatusBadge status={cb.status} />
+                <span className="text-red-700">{cb.batch?.name}</span>
+                {cb.rejectionReason && (
+                  <span className="text-red-500 text-xs">— {cb.rejectionReason}</span>
+                )}
+              </div>
+            ))}
+          </div>
+        </motion.div>
+      )}
+
+      {/* Approved registrations */}
+      {!isLoading && approvedForActive && (
+        <motion.div
+          initial={{ opacity: 0, y: -10 }}
+          animate={{ opacity: 1, y: 0 }}
+          className="bg-green-50 border border-green-200 rounded-xl p-3 flex items-center gap-2 text-sm text-green-800"
+        >
+          <CheckCircle2 className="h-4 w-4 text-green-600" />
+          Đã được phê duyệt tham gia đợt: <strong>{approvedForActive.batch?.name}</strong>
+          · Tối đa {approvedForActive.maxStudents || 5} sinh viên
+        </motion.div>
+      )}
 
       {/* Data Table Card */}
       <Card>
@@ -468,6 +780,14 @@ export function CompanyJobManagerPage() {
         confirmLabel="Xóa"
         cancelLabel="Huỷ"
         variant="danger"
+      />
+
+      {/* Register for Batch Modal */}
+      <RegisterBatchModal
+        isOpen={registerModalOpen}
+        onClose={() => setRegisterModalOpen(false)}
+        onSuccess={(batchId) => { fetchMyCompanyBatches(); }}
+        activeBatches={activeBatches.filter((b: any) => b.status !== 'closed')}
       />
     </div>
   );

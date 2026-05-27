@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LogsService } from '../logs/logs.service';
 
@@ -9,13 +9,92 @@ export class ApprovalsService {
     private logsService: LogsService,
   ) {}
 
-  async findAll(query: any) {
+  /**
+   * CORE CONSTRAINT 6: Auto-expire pending approvals past deadline
+   * - Company: 7 days from creation
+   * - Lecturer: 5 days from creation
+   * Runs automatically when approvals are fetched
+   */
+  async autoExpireApprovals(): Promise<number> {
+    const now = new Date();
+    let expiredCount = 0;
+
+    // Company level approvals: auto-expire after 7 days if company hasn't acted
+    const companyExpired = await this.prisma.approvalItem.findMany({
+      where: {
+        status: 'pending',
+        level: 'department',
+        positionId: { not: null },
+        createdAt: { lt: new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000) },
+      },
+    });
+
+    for (const item of companyExpired) {
+      await this.prisma.approvalItem.update({
+        where: { id: item.id },
+        data: { status: 'rejected', autoRejected: true, comments: 'Hết hạn xử lý (7 ngày).', reviewedAt: now },
+      });
+      if (item.positionId) {
+        await this.prisma.position.update({
+          where: { id: item.positionId },
+          data: { status: 'draft' },
+        });
+      }
+      expiredCount++;
+    }
+
+    // Lecturer level approvals: auto-expire after 5 days
+    const lecturerExpired = await this.prisma.approvalItem.findMany({
+      where: {
+        status: 'pending',
+        level: 'lecturer',
+        applicationId: { not: null },
+        createdAt: { lt: new Date(now.getTime() - 5 * 24 * 60 * 60 * 1000) },
+      },
+    });
+
+    for (const item of lecturerExpired) {
+      await this.prisma.approvalItem.update({
+        where: { id: item.id },
+        data: { status: 'rejected', autoRejected: true, comments: 'Hết hạn xử lý (5 ngày).', reviewedAt: now },
+      });
+      if (item.applicationId) {
+        await this.prisma.application.update({
+          where: { id: item.applicationId },
+          data: { status: 'rejected' },
+        });
+      }
+      expiredCount++;
+    }
+
+    return expiredCount;
+  }
+
+  async findAll(query: any, userId?: string, userRole?: string) {
+    // Auto-expire old approvals on every fetch
+    await this.autoExpireApprovals();
+
     const { page = 1, limit = 10, status, level } = query;
     const skip = (page - 1) * limit;
 
     const where: any = {};
     if (status) where.status = status;
     if (level) where.level = level;
+
+    // Lecturers can only see applications from students they are assigned to supervise
+    if (userRole === 'lecturer' && userId) {
+      const assignedStudentIds = await this.prisma.lecturerAssignment.findMany({
+        where: { lecturerId: userId, status: 'active' },
+        select: { studentId: true },
+      });
+      const studentIds = assignedStudentIds.map((a) => a.studentId);
+      if (studentIds.length > 0) {
+        where.studentId = { in: studentIds };
+      } else {
+        // Lecturer has no assigned students — return empty
+        return { success: true, data: [], meta: { total: 0, page: Number(page), limit: Number(limit), totalPages: 0 } };
+      }
+    }
 
     const [approvals, total] = await Promise.all([
       this.prisma.approvalItem.findMany({
@@ -45,6 +124,7 @@ export class ApprovalsService {
   }
 
   async findOne(id: string) {
+    await this.autoExpireApprovals();
     const item = await this.prisma.approvalItem.findUnique({ 
       where: { id },
       include: {
@@ -67,6 +147,20 @@ export class ApprovalsService {
       where: { id: userId },
       select: { id: true, name: true, role: true },
     });
+
+    // Authorization: lecturers can only approve students they are assigned to supervise
+    if (reviewer?.role === 'lecturer') {
+      const assignment = await this.prisma.lecturerAssignment.findFirst({
+        where: {
+          lecturerId: userId,
+          studentId: item.studentId,
+          status: 'active',
+        },
+      });
+      if (!assignment) {
+        throw new BadRequestException('Bạn không có quyền duyệt đơn của sinh viên này. Chỉ giảng viên được phân công hướng dẫn mới có quyền duyệt.');
+      }
+    }
 
     // If this is a position approval, update position status
     if (item.positionId) {
@@ -219,9 +313,27 @@ export class ApprovalsService {
     return { success: true, data: updated };
   }
 
-  async getMyPendingApprovals(reviewerId: string) {
+  async getMyPendingApprovals(userId: string, userRole?: string) {
+    await this.autoExpireApprovals();
+
+    const where: any = { status: 'pending' };
+
+    // Lecturers can only see applications from students they are assigned to supervise
+    if (userRole === 'lecturer') {
+      const assignedStudentIds = await this.prisma.lecturerAssignment.findMany({
+        where: { lecturerId: userId, status: 'active' },
+        select: { studentId: true },
+      });
+      const studentIds = assignedStudentIds.map((a) => a.studentId);
+      if (studentIds.length > 0) {
+        where.studentId = { in: studentIds };
+      } else {
+        return { success: true, data: [] };
+      }
+    }
+
     const items = await this.prisma.approvalItem.findMany({
-      where: { status: 'pending' },
+      where,
       orderBy: { createdAt: 'desc' },
       include: {
         student: { select: { id: true, name: true, email: true, avatar: true } },

@@ -69,8 +69,8 @@ export function LecturerApprovalPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
-  const [levelFilter, setLevelFilter] = useState<"all" | "department" | "lecturer" | "registrar">("all");
-  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "in_progress" | "approved" | "rejected">("all");
+  const [levelFilter, setLevelFilter] = useState<"all" | "department" | "lecturer" | "registrar">("lecturer");
+  const [statusFilter, setStatusFilter] = useState<"all" | "pending" | "in_progress" | "approved" | "rejected">("pending");
   const [currentPage, setCurrentPage] = useState(1);
   const [totalItems, setTotalItems] = useState(0);
 

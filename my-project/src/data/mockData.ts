@@ -123,7 +123,7 @@ export const mockPositions: Position[] = [
     postedDate: "2026-05-01",
     salaryMin: 5000000,
     salaryMax: 8000000,
-    workType: "on-site",
+    workType: "onsite",
   },
   {
     id: "pos-2",

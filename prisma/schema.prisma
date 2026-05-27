@@ -83,6 +83,12 @@ enum PositionDuration {
   six_plus_months
 }
 
+enum BatchStatus {
+  upcoming
+  active
+  closed
+}
+
 // ================================================
 // USERS TABLE
 // ================================================
@@ -113,6 +119,9 @@ model User {
   refreshTokens       RefreshToken[]
   companyApprovalItems ApprovalItem[]       @relation("CompanyApproval")
   reviewerApprovalItems ApprovalItem[]     @relation("ReviewerApproval")
+  createdBatches      InternshipBatch[]    @relation("BatchCreator")
+  lecturerAssignments LecturerAssignment[] @relation("LecturerAssignments")
+  studentAssignments  LecturerAssignment[] @relation("StudentAssignments")
 
   @@map("users")
   @@index([email])
@@ -165,11 +174,13 @@ model Position {
   postedDate  DateTime         @default(now()) @map("posted_date")
   deadline    DateTime?
   status      JobStatus        @default(draft)
+  batchId     String?          @map("batch_id")
   createdAt   DateTime        @default(now()) @map("created_at")
   updatedAt   DateTime        @updatedAt @map("updated_at")
 
   // Relations
   company     User          @relation("CompanyPositions", fields: [companyId], references: [id], onDelete: Cascade)
+  batch       InternshipBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
   applications Application[]
   approvalItems ApprovalItem[]
 
@@ -178,6 +189,7 @@ model Position {
   @@index([status])
   @@index([field])
   @@index([location])
+  @@index([batchId])
 }
 
 // ================================================
@@ -188,6 +200,7 @@ model Application {
   id          String            @id @default(uuid())
   positionId  String           @map("position_id")
   studentId   String           @map("student_id")
+  batchId     String?          @map("batch_id")
   coverLetter String?          @map("cover_letter")
   resumeUrl   String?          @map("resume_url")
   portfolioUrl String?         @map("portfolio_url")
@@ -198,6 +211,7 @@ model Application {
   // Relations
   position       Position       @relation(fields: [positionId], references: [id], onDelete: Cascade)
   student        User           @relation("StudentApplications", fields: [studentId], references: [id], onDelete: Cascade)
+  batch          InternshipBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
   approvalItems  ApprovalItem[]
   documents      Document[]
   evaluations    Evaluation[]
@@ -207,6 +221,7 @@ model Application {
   @@index([positionId])
   @@index([studentId])
   @@index([status])
+  @@index([batchId])
 }
 
 // ================================================
@@ -386,4 +401,65 @@ model RefreshToken {
   @@map("refresh_tokens")
   @@index([userId])
   @@index([token])
+}
+
+// ================================================
+// INTERNSHIP BATCHES TABLE
+// ================================================
+
+model InternshipBatch {
+  id                       String      @id @default(uuid())
+  name                     String
+  description              String?
+  semester                 String
+  academicYear             String      @map("academic_year")
+  applicationDeadline      DateTime?   @map("application_deadline")
+  startDate                DateTime?   @map("start_date")
+  endDate                  DateTime?   @map("end_date")
+  maxStudents              Int         @default(0) @map("max_students")
+  status                   BatchStatus @default(upcoming)
+  allowCompanyPosting      Boolean     @default(false) @map("allow_company_posting")
+  allowStudentApplication  Boolean     @default(false) @map("allow_student_application")
+  createdBy                String?     @map("created_by")
+  createdAt                DateTime    @default(now()) @map("created_at")
+  updatedAt                DateTime    @updatedAt @map("updated_at")
+
+  // Relations
+  creator       User?          @relation("BatchCreator", fields: [createdBy], references: [id], onDelete: SetNull)
+  positions     Position[]
+  applications  Application[]
+  lecturerAssignments LecturerAssignment[]
+
+  @@map("internship_batches")
+  @@index([status])
+  @@index([semester])
+}
+
+// ================================================
+// LECTURER ASSIGNMENTS TABLE
+// ================================================
+
+model LecturerAssignment {
+  id          String   @id @default(uuid())
+  lecturerId  String   @map("lecturer_id")
+  studentId   String   @map("student_id")
+  batchId     String?  @map("batch_id")
+  status      String   @default("active")
+  notes       String?
+  maxStudents Int      @default(10) @map("max_students")
+  assignedAt  DateTime @default(now()) @map("assigned_at")
+  completedAt DateTime? @map("completed_at")
+  assignedBy String?  @map("assigned_by")
+
+  // Relations
+  lecturer    User             @relation("LecturerAssignments", fields: [lecturerId], references: [id], onDelete: Cascade)
+  student     User             @relation("StudentAssignments", fields: [studentId], references: [id], onDelete: Cascade)
+  batch       InternshipBatch? @relation(fields: [batchId], references: [id], onDelete: SetNull)
+
+  @@unique([studentId, batchId])
+  @@map("lecturer_assignments")
+  @@index([lecturerId])
+  @@index([studentId])
+  @@index([batchId])
+  @@index([status])
 }

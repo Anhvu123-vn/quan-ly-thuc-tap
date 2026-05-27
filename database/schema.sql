@@ -20,6 +20,7 @@ CREATE TYPE job_status AS ENUM ('draft', 'active', 'closed', 'paused', 'filled')
 CREATE TYPE work_type AS ENUM ('remote', 'hybrid', 'onsite');
 CREATE TYPE log_type AS ENUM ('email', 'notification', 'system');
 CREATE TYPE position_duration AS ENUM ('1_month', '2_3_months', '4_6_months', '6_plus_months');
+CREATE TYPE batch_status AS ENUM ('upcoming', 'active', 'closed');
 
 -- ================================================
 -- USERS TABLE
@@ -71,6 +72,7 @@ CREATE TABLE positions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     title VARCHAR(255) NOT NULL,
     company_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    batch_id UUID REFERENCES internship_batches(id) ON DELETE SET NULL,
     location VARCHAR(255),
     field VARCHAR(100),
     description TEXT,
@@ -92,6 +94,7 @@ CREATE INDEX idx_positions_company_id ON positions(company_id);
 CREATE INDEX idx_positions_status ON positions(status);
 CREATE INDEX idx_positions_field ON positions(field);
 CREATE INDEX idx_positions_location ON positions(location);
+CREATE INDEX idx_positions_batch_id ON positions(batch_id);
 
 -- ================================================
 -- APPLICATIONS TABLE
@@ -101,19 +104,21 @@ CREATE TABLE applications (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     position_id UUID NOT NULL REFERENCES positions(id) ON DELETE CASCADE,
     student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    batch_id UUID REFERENCES internship_batches(id) ON DELETE SET NULL,
     cover_letter TEXT,
     resume_url VARCHAR(500),
     portfolio_url VARCHAR(500),
     status application_status DEFAULT 'applied',
     applied_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    
+
     CONSTRAINT unique_application UNIQUE (position_id, student_id)
 );
 
 CREATE INDEX idx_applications_position_id ON applications(position_id);
 CREATE INDEX idx_applications_student_id ON applications(student_id);
 CREATE INDEX idx_applications_status ON applications(status);
+CREATE INDEX idx_applications_batch_id ON applications(batch_id);
 
 -- ================================================
 -- APPROVAL ITEMS TABLE (Multi-stage Approval)
@@ -301,6 +306,62 @@ CREATE TRIGGER update_log_entries_updated_at
 CREATE TRIGGER update_evaluations_updated_at
     BEFORE UPDATE ON evaluations
     FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+CREATE TRIGGER update_internship_batches_updated_at
+    BEFORE UPDATE ON internship_batches
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
+
+-- ================================================
+-- INTERNSHIP BATCHES TABLE
+-- ================================================
+CREATE TABLE internship_batches (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    name VARCHAR(255) NOT NULL,
+    description TEXT,
+    semester VARCHAR(50) NOT NULL,
+    academic_year VARCHAR(20) NOT NULL,
+    application_deadline DATE,
+    start_date DATE,
+    end_date DATE,
+    max_students INTEGER DEFAULT 0,
+    status batch_status DEFAULT 'upcoming',
+    allow_company_posting BOOLEAN DEFAULT FALSE,
+    allow_student_application BOOLEAN DEFAULT FALSE,
+    created_by UUID REFERENCES users(id) ON DELETE SET NULL,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_internship_batches_status ON internship_batches(status);
+CREATE INDEX idx_internship_batches_semester ON internship_batches(semester);
+
+COMMENT ON TABLE internship_batches IS 'Admin-created internship batches controlling when companies can post and students can apply';
+COMMENT ON COLUMN internship_batches.allow_company_posting IS 'Whether companies can post new positions during this batch';
+COMMENT ON COLUMN internship_batches.allow_student_application IS 'Whether students can apply to positions during this batch';
+
+-- ================================================
+-- LECTURER ASSIGNMENTS TABLE
+-- ================================================
+CREATE TABLE lecturer_assignments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    lecturer_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    student_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    batch_id UUID REFERENCES internship_batches(id) ON DELETE SET NULL,
+    status VARCHAR(20) DEFAULT 'active', -- 'active', 'completed', 'cancelled'
+    max_students INTEGER DEFAULT 10,
+    notes TEXT,
+    assigned_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    completed_at TIMESTAMP WITH TIME ZONE,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    
+    CONSTRAINT unique_student_batch UNIQUE (student_id, batch_id)
+);
+
+CREATE INDEX idx_lecturer_assignments_lecturer ON lecturer_assignments(lecturer_id);
+CREATE INDEX idx_lecturer_assignments_student ON lecturer_assignments(student_id);
+CREATE INDEX idx_lecturer_assignments_batch ON lecturer_assignments(batch_id);
+CREATE INDEX idx_lecturer_assignments_status ON lecturer_assignments(status);
 
 -- ================================================
 -- VIEWS FOR COMMON QUERIES

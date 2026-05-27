@@ -5,18 +5,10 @@ export const jobPostingSchema = z.object({
   title: z.string().min(3, "Tiêu đề phải có ít nhất 3 ký tự"),
   field: z.string().min(1, "Vui lòng chọn lĩnh vực"),
   location: z.string().min(2, "Địa điểm phải có ít nhất 2 ký tự"),
-  workType: z.enum(["remote", "hybrid", "onsite"], {
-    required_error: "Vui lòng chọn hình thức làm việc",
-  }),
+  workType: z.enum(["remote", "hybrid", "onsite"]),
   duration: z.string().min(1, "Vui lòng chọn thời hạn"),
-  salaryMin: z.coerce
-    .number({ invalid_type_error: "Lương tối thiểu phải là số" })
-    .min(0, "Lương không được âm")
-    .optional(),
-  salaryMax: z.coerce
-    .number({ invalid_type_error: "Lương tối đa phải là số" })
-    .min(0, "Lương không được âm")
-    .optional(),
+  salaryMin: z.coerce.number().min(0, "Lương không được âm").optional(),
+  salaryMax: z.coerce.number().min(0, "Lương không được âm").optional(),
   requirements: z.string().optional(),
   status: z.enum(["active", "paused", "closed"]).optional(),
 }).refine(
@@ -38,9 +30,7 @@ export type JobPostingFormValues = z.infer<typeof jobPostingSchema>;
 export const userEditSchema = z.object({
   name: z.string().min(2, "Tên phải có ít nhất 2 ký tự"),
   email: z.string().email("Email không hợp lệ"),
-  role: z.enum(["student", "lecturer", "company", "admin"], {
-    required_error: "Vui lòng chọn vai trò",
-  }),
+  role: z.enum(["student", "lecturer", "company", "admin"]),
   department: z.string().optional(),
   phone: z
     .string()
@@ -65,10 +55,7 @@ export const studentProfileSchema = z.object({
     .max(500, "Tiểu sử không được vượt quá 500 ký tự")
     .optional()
     .or(z.literal("")),
-  gpa: z.coerce
-    .number({ invalid_type_error: "GPA phải là số" })
-    .min(0, "GPA tối thiểu là 0")
-    .max(4, "GPA tối đa là 4"),
+  gpa: z.coerce.number().min(0, "GPA tối thiểu là 0").max(4, "GPA tối đa là 4"),
   skills: z.array(z.string()).optional().default([]),
 });
 

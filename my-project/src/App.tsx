@@ -10,8 +10,8 @@ import { PositionDetailPage } from "@/pages/PositionDetailPage";
 import { ApprovalTimelineDemo } from "@/pages/ApprovalTimelineDemo";
 import { ApplicationDetailPage } from "@/pages/ApplicationDetailPage";
 import { ApplicationFormPage } from "@/pages/ApplicationFormPage";
-import { RoleSelectionModal } from "@/components/auth/RoleSelectionModal";
 import { DashboardLayout } from "@/components/layout/DashboardLayout";
+import { CompanyRegisterPage } from "@/pages/CompanyRegisterPage";
 
 // Import all page components
 import { StudentDashboardPage } from "@/pages/StudentDashboard";
@@ -22,14 +22,18 @@ import { LecturerDashboardPage } from "@/pages/lecturer/LecturerDashboardPage";
 import { LecturerApprovalPage } from "@/pages/lecturer/LecturerApprovalPage";
 import { LecturerFeedbackPage } from "@/pages/lecturer/LecturerFeedbackPage";
 import { LecturerEvaluationPage } from "@/pages/lecturer/LecturerEvaluationPage";
+import { LecturerStudentsPage } from "@/pages/lecturer/LecturerStudentsPage";
 import { CompanyDashboardPage } from "@/pages/company/CompanyDashboardPage";
 import { CompanyJobManagerPage } from "@/pages/company/CompanyJobManagerPage";
 import { CompanyCandidateReviewPage } from "@/pages/company/CompanyCandidateReviewPage";
 import { CompanyEvaluation360Page } from "@/pages/company/CompanyEvaluation360Page";
 import { AdminDashboardPage } from "@/pages/AdminDashboard";
 import { AdminUserManagementPage } from "@/pages/admin/AdminUserManagementPage";
+import { AdminBulkImportPage } from "@/pages/admin/AdminBulkImportPage";
+import { AdminBatchesPage } from "@/pages/admin/AdminBatchesPage";
 import { AdminAnalyticsPage } from "@/pages/admin/AdminAnalyticsPage";
 import { AdminSystemLogsPage } from "@/pages/admin/AdminSystemLogsPage";
+import { AdminLecturerAssignmentPage } from "@/pages/admin/AdminLecturerAssignmentPage";
 import { SettingsPage } from "@/pages/Settings";
 
 // Default route: goes to login if unauthenticated, else to role-based dashboard
@@ -107,6 +111,7 @@ function App() {
         <Routes>
           {/* ===== PUBLIC ROUTES ===== */}
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/register/company" element={<CompanyRegisterPage />} />
           <Route path="/approval-demo" element={<ApprovalTimelineDemo />} />
 
           {/* ===== PROTECTED ROUTES - wrapped in DashboardLayout ===== */}
@@ -178,6 +183,11 @@ function App() {
                 <LecturerEvaluationPage />
               </ProtectedRoute>
             } />
+            <Route path="/lecturer/students" element={
+              <ProtectedRoute allowedRoles={["lecturer", "admin"]}>
+                <LecturerStudentsPage />
+              </ProtectedRoute>
+            } />
 
             {/* ===== COMPANY ROUTES ===== */}
             <Route path="/company" element={
@@ -217,6 +227,21 @@ function App() {
                 <AdminUserManagementPage />
               </ProtectedRoute>
             } />
+            <Route path="/admin/users/import" element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AdminBulkImportPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/batches" element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AdminBatchesPage />
+              </ProtectedRoute>
+            } />
+            <Route path="/admin/lecturer-assignment" element={
+              <ProtectedRoute allowedRoles={["admin"]}>
+                <AdminLecturerAssignmentPage />
+              </ProtectedRoute>
+            } />
             <Route path="/admin/analytics" element={
               <ProtectedRoute allowedRoles={["admin"]}>
                 <AdminAnalyticsPage />
@@ -245,7 +270,7 @@ function App() {
           <Route path="/" element={<DefaultRoute />} />
           <Route path="*" element={<CatchAllRoute />} />
         </Routes>
-        <RoleSelectionModal />
+        {/* RoleSelectionModal - Disabled for now */}
         <Toaster position="top-right" richColors />
       </AuthProvider>
     </BrowserRouter>

@@ -1,6 +1,6 @@
-import { useState, useMemo, useCallback } from "react";
+import { useState, useMemo, useCallback, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { SlidersHorizontal } from "lucide-react";
+import { SlidersHorizontal, Loader2, CalendarDays, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SearchBar } from "@/components/positions/SearchBar";
 import { FilterPanel } from "@/components/positions/FilterPanel";
@@ -66,6 +66,25 @@ export function PositionsPage() {
   });
   const [currentPage, setCurrentPage] = useState(1);
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const [activeBatch, setActiveBatch] = useState<any>(null);
+  const [batchLoading, setBatchLoading] = useState(true);
+
+  // Fetch active batch info
+  useEffect(() => {
+    setBatchLoading(true);
+    api.getActiveBatch().then((res: any) => {
+      if (res?.success && res.data) {
+        setActiveBatch(res.data);
+      } else {
+        setActiveBatch(null);
+      }
+    }).catch((err) => {
+      console.error('[PositionsPage] getActiveBatch error:', err);
+      setActiveBatch(null);
+    }).finally(() => {
+      setBatchLoading(false);
+    });
+  }, []);
 
   // TanStack Query for data fetching
   const { data, isLoading, isFetching } = useQuery({
@@ -189,6 +208,46 @@ export function PositionsPage() {
 
       {/* Main content */}
       <main className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+        {/* Active batch banner */}
+        {activeBatch && (
+          <div className="mb-6 bg-gradient-to-r from-indigo-500 to-violet-600 rounded-xl p-4 flex items-center gap-3">
+            <CalendarDays className="h-5 w-5 text-white/80 shrink-0" />
+            <div className="flex-1">
+              <p className="text-white font-semibold text-sm">
+                Đợt thực tập: {activeBatch.name}
+              </p>
+              {activeBatch.allowStudentApplication && (
+                <p className="text-white/70 text-xs mt-0.5">
+                  Đang nhận đơn ứng tuyển — Hạn nộp:{" "}
+                  {activeBatch.applicationDeadline
+                    ? new Date(activeBatch.applicationDeadline).toLocaleDateString("vi-VN")
+                    : "Không giới hạn"}
+                </p>
+              )}
+            </div>
+            {activeBatch.allowStudentApplication && (
+              <span className="shrink-0 text-xs px-2 py-1 rounded-full bg-white/20 text-white">
+                Đang mở nộp đơn
+              </span>
+            )}
+          </div>
+        )}
+
+        {/* No active batch warning */}
+        {batchLoading === false && activeBatch === null && (
+          <div className="mb-6 bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center gap-3">
+            <AlertCircle className="h-5 w-5 text-amber-500 shrink-0" />
+            <div>
+              <p className="text-amber-800 font-semibold text-sm">
+                Hiện chưa có đợt thực tập nào được kích hoạt
+              </p>
+              <p className="text-amber-600 text-xs mt-0.5">
+                Vui lòng liên hệ admin để mở đợt thực tập mới.
+              </p>
+            </div>
+          </div>
+        )}
+
         <div className="flex flex-col lg:flex-row gap-6">
           {/* Filter panel - sidebar on desktop */}
           <aside className="w-full lg:w-64 shrink-0">

@@ -10,6 +10,10 @@ import { LogsModule } from './modules/logs/logs.module';
 import { EvaluationsModule } from './modules/evaluations/evaluations.module';
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { PublicModule } from './modules/public/public.module';
+import { ImportUsersModule } from './modules/import-users/import-users.module';
+import { BatchesModule } from './modules/batches/batches.module';
+import { CompanyBatchModule } from './modules/company-batch/company-batch.module';
+import { LecturerAssignmentModule } from './modules/lecturer-assignment/lecturer-assignment.module';
 
 @Module({
   imports: [
@@ -27,6 +31,10 @@ import { PublicModule } from './modules/public/public.module';
     LogsModule,
     EvaluationsModule,
     NotificationsModule,
+    ImportUsersModule,
+    BatchesModule,
+    CompanyBatchModule,
+    LecturerAssignmentModule,
   ],
 })
 export class AppModule {}

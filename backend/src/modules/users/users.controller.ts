@@ -85,4 +85,32 @@ export class UsersController {
   async updateStudentUserInfo(@Body() dto: any, @Request() req: any) {
     return this.usersService.updateUser(req.user.sub, dto);
   }
+
+  // Company management endpoints (admin only)
+  @Get('companies/pending')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Get pending company registrations (admin only)' })
+  @ApiBearerAuth()
+  async getPendingCompanies(@Query() query: any) {
+    return this.usersService.getPendingCompanies(query);
+  }
+
+  @Put('companies/:id/approve')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Approve a pending company (admin only)' })
+  @ApiBearerAuth()
+  async approveCompany(@Param('id') id: string) {
+    return this.usersService.approveCompany(id);
+  }
+
+  @Put('companies/:id/reject')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ADMIN)
+  @ApiOperation({ summary: 'Reject a pending company (admin only)' })
+  @ApiBearerAuth()
+  async rejectCompany(@Param('id') id: string) {
+    return this.usersService.rejectCompany(id);
+  }
 }

@@ -48,6 +48,22 @@ export default defineConfig({
         target: 'http://localhost:3000',
         changeOrigin: true,
       },
+      '/batches': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/company-batches': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/lecturer-assignments': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
+      '/import-users': {
+        target: 'http://localhost:3000',
+        changeOrigin: true,
+      },
     },
   },
 })

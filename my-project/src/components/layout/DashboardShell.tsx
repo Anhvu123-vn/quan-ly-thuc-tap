@@ -2,6 +2,7 @@ import { useState, createContext, useContext } from "react";
 import { Sidebar } from "./Sidebar";
 import { Header } from "./Header";
 import { MainContent } from "./MainContent";
+import { cn } from "@/lib/utils";
 
 // Sidebar context for global state
 interface SidebarContextType {
@@ -18,7 +19,7 @@ export const useSidebar = () => useContext(SidebarContext);
 
 interface DashboardShellProps {
   children: React.ReactNode;
-  title: string;
+  title?: string;
 }
 
 export function DashboardShell({ children, title }: DashboardShellProps) {
@@ -37,20 +38,16 @@ export function DashboardShell({ children, title }: DashboardShellProps) {
         <Sidebar isCollapsed={sidebarCollapsed} onToggle={toggleSidebar} />
 
         {/* Main area with header offset - adjusts based on sidebar state */}
-        <div 
+        <div
           className={cn(
             "transition-all duration-300",
             sidebarCollapsed ? "lg:pl-20" : "lg:pl-64"
           )}
         >
-          <Header title={title} onMenuClick={toggleSidebar} />
+          <Header />
           <MainContent>{children}</MainContent>
         </div>
       </div>
     </SidebarContext.Provider>
   );
-}
-
-function cn(...classes: (string | boolean | undefined | null)[]) {
-  return classes.filter(Boolean).join(" ");
 }

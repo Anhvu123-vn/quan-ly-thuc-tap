@@ -65,8 +65,9 @@ class ApiService {
   }) {
     return this.request<{
       user: any;
-      accessToken: string;
-      refreshToken: string;
+      accessToken?: string;
+      refreshToken?: string;
+      message?: string;
     }>('/auth/register', { body: data });
   }
 
@@ -331,6 +332,193 @@ class ApiService {
 
   async getSystemLogStats() {
     return this.request<{ total: number; sent: number; failed: number }>('/logs/system/stats');
+  }
+
+  // Bulk import users
+  async bulkImportUsers(users: {
+    name: string;
+    email: string;
+    role: string;
+    password: string;
+    phone?: string;
+    department?: string;
+  }[]) {
+    return this.request<{
+      successCount: number;
+      failedCount: number;
+      assignedCount: number;
+      createdUsers: { id: string; name: string; email: string; role: string }[];
+      failedRows: { row: number; field?: string; message: string }[];
+    }>('/import-users/execute', { body: { users } });
+  }
+
+  async previewImportUsers(
+    fileBase64: string,
+  ): Promise<{
+    validUsers: any[];
+    errors: { row: number; field?: string; message: string }[];
+    totalRows: number;
+    validCount: number;
+    errorCount: number;
+  }> {
+    return this.request('/import-users/preview', {
+      body: { fileBase64 },
+    });
+  }
+
+  // Internship Batches
+  async getBatches(params?: { page?: number; status?: string; search?: string }) {
+    const cleanParams: Record<string, string | number> = {};
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null && value !== '') {
+          cleanParams[key] = value;
+        }
+      }
+    }
+    const query = Object.keys(cleanParams).length > 0 ? '?' + new URLSearchParams(cleanParams as any).toString() : '';
+    return this.request<{ data: any[]; meta: any }>(`/batches${query}`);
+  }
+
+  async getActiveBatch() {
+    const response = await fetch(`${API_BASE_URL}/batches/active`);
+    return response.json();
+  }
+
+  async getBatchStats() {
+    return this.request<any>('/batches/stats');
+  }
+
+  async createBatch(data: {
+    name: string;
+    description?: string;
+    semester: string;
+    academicYear: string;
+    applicationDeadline?: string;
+    startDate?: string;
+    endDate?: string;
+    maxStudents?: number;
+  }) {
+    return this.request<any>('/batches', { body: data });
+  }
+
+  async updateBatch(id: string, data: any) {
+    return this.request<any>(`/batches/${id}`, { method: 'PUT', body: data });
+  }
+
+  async activateBatch(id: string, data: { allowCompanyPosting: boolean; allowStudentApplication: boolean }) {
+    return this.request<any>(`/batches/${id}/activate`, { method: 'PUT', body: data });
+  }
+
+  async closeBatch(id: string) {
+    return this.request<any>(`/batches/${id}/close`, { method: 'PUT' });
+  }
+
+  async deleteBatch(id: string) {
+    return this.request<{ message: string }>(`/batches/${id}`, { method: 'DELETE' });
+  }
+
+  async getBatch(id: string) {
+    return this.request<any>(`/batches/${id}`);
+  }
+
+  async canCompanyPost() {
+    return this.request<{ can: boolean; activeBatchId?: string }>('/batches/check/company-post');
+  }
+
+  async canStudentApply() {
+    return this.request<{ can: boolean; activeBatchId?: string; batchName?: string }>('/batches/check/student-apply');
+  }
+
+  // Company Batch (company registration for a batch)
+  async registerCompanyForBatch(batchId: string, maxStudents?: number) {
+    return this.request<any>('/company-batches/register', {
+      body: { batchId, maxStudents },
+    });
+  }
+
+  async getMyCompanyBatches() {
+    return this.request<any[]>('/company-batches/my');
+  }
+
+  async getCompanyBatchesForBatch(batchId: string, params?: { page?: number; status?: string }) {
+    const q = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    return this.request<{ data: any[]; meta: any }>(`/company-batches/batch/${batchId}${q}`);
+  }
+
+  async getPendingCompanyBatches(params?: { page?: number }) {
+    const q = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    return this.request<{ data: any[]; meta: any }>(`/company-batches/pending${q}`);
+  }
+
+  async reviewCompanyBatch(companyBatchId: string, data: { status: 'approved' | 'rejected'; rejectionReason?: string; maxStudents?: number }) {
+    return this.request<any>(`/company-batches/${companyBatchId}/review`, {
+      method: 'PUT',
+      body: data,
+    });
+  }
+
+  // Company registration approval (admin)
+  async getPendingCompanies(params?: { page?: number; limit?: number; search?: string }) {
+    const cleanParams: Record<string, string | number> = {};
+    if (params) {
+      for (const [key, value] of Object.entries(params)) {
+        if (value !== undefined && value !== null && value !== '') {
+          cleanParams[key] = value;
+        }
+      }
+    }
+    const query = Object.keys(cleanParams).length > 0 ? '?' + new URLSearchParams(cleanParams as any).toString() : '';
+    return this.request<{ data: any[]; meta: any }>(`/users/companies/pending${query}`);
+  }
+
+  async approveCompany(id: string) {
+    return this.request<any>(`/users/companies/${id}/approve`, { method: 'PUT' });
+  }
+
+  async rejectCompany(id: string) {
+    return this.request<any>(`/users/companies/${id}/reject`, { method: 'PUT' });
+  }
+
+  async getLecturerAssignments(params?: { batchId?: string; lecturerId?: string }) {
+    const query = params ? '?' + new URLSearchParams(params as any).toString() : '';
+    return this.request<{ data: any[]; meta: any }>(`/lecturer-assignments${query}`);
+  }
+
+  // Lecturer Assignment - Auto Distribute
+  async getLecturersForAssignment() {
+    return this.request<any[]>('/lecturer-assignments/lecturers');
+  }
+
+  async getUnassignedStudents(batchId?: string) {
+    const query = batchId ? '?batchId=' + batchId : '';
+    return this.request<any[]>(`/lecturer-assignments/unassigned${query}`);
+  }
+
+  async previewDistribution(batchId?: string) {
+    const query = batchId ? '?batchId=' + batchId : '';
+    return this.request<any>(`/lecturer-assignments/preview-distribution${query}`);
+  }
+
+  async autoDistribute(batchId?: string) {
+    return this.request<{
+      assignedCount: number;
+      totalStudents: number;
+      totalLecturers: number;
+      distribution: { lecturerId: string; lecturerName: string; count: number }[];
+    }>('/lecturer-assignments/auto-distribute', { body: { batchId } });
+  }
+
+  async assignLecturer(data: { lecturerId: string; studentId: string; batchId?: string }) {
+    return this.request<any>('/lecturer-assignments', { body: data });
+  }
+
+  async updateLecturerAssignment(id: string, data: { status?: string; lecturerId?: string; notes?: string }) {
+    return this.request<any>(`/lecturer-assignments/${id}`, { method: 'PUT', body: data });
+  }
+
+  async deleteLecturerAssignment(id: string) {
+    return this.request<{ success: boolean; message: string }>(`/lecturer-assignments/${id}`, { method: 'DELETE' });
   }
 }
 

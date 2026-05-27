@@ -61,8 +61,7 @@ export function CompanyCandidateReviewPage() {
 
   const tabs = [
     { id: "all", label: "Tất cả", badge: applications.length },
-    { id: "applied", label: "Đã nộp", badge: applications.filter((a) => a.status === "applied").length },
-    { id: "screening", label: "Xét duyệt", badge: applications.filter((a) => a.status === "screening").length },
+    { id: "screening", label: "Chờ xét duyệt", badge: applications.filter((a) => a.status === "screening").length },
     { id: "interview", label: "Phỏng vấn", badge: applications.filter((a) => a.status === "interview").length },
     { id: "department_approved", label: "Đã duyệt", badge: applications.filter((a) => a.status === "department_approved").length },
   ];
@@ -303,7 +302,7 @@ export function CompanyCandidateReviewPage() {
                   )}
 
                   {/* Move to Interview */}
-                  {(selected.status === "screening" || selected.status === "applied") && selected.status !== "interview" && selected.status !== "department_approved" && selected.status !== "rejected" && (
+                  {(selected.status === "screening" || selected.status === "interview") && selected.status !== "department_approved" && selected.status !== "rejected" && (
                     <Button
                       onClick={() => updateStatus(selected.id, "interview", "Phỏng vấn")}
                       disabled={updatingStatus === selected.id}
@@ -319,7 +318,7 @@ export function CompanyCandidateReviewPage() {
                   )}
 
                   {/* Approve */}
-                  {(selected.status === "screening" || selected.status === "interview" || selected.status === "offer") && selected.status !== "department_approved" && selected.status !== "rejected" && (
+                  {(selected.status === "screening" || selected.status === "interview") && selected.status !== "department_approved" && selected.status !== "rejected" && (
                     <Button
                       onClick={() => updateStatus(selected.id, "department_approved", "Đã duyệt")}
                       disabled={updatingStatus === selected.id}
@@ -330,7 +329,7 @@ export function CompanyCandidateReviewPage() {
                       ) : (
                         <Check className="h-4 w-4 mr-2" />
                       )}
-                      Duyệt theo khoa
+                      Duyệt ứng viên
                     </Button>
                   )}
 

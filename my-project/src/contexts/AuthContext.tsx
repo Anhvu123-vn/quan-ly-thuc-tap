@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useCallback, useEffect, type ReactNode } from "react";
 import { api } from "@/services/api";
+import { useNavigate } from "react-router-dom";
 
 interface User {
   id: string;
@@ -15,9 +16,12 @@ interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
+  needsRole: boolean;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   refreshUser: () => Promise<void>;
+  updateRole: (role: string) => Promise<void>;
+  switchRole: (role: string) => void;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -28,8 +32,12 @@ const REFRESH_TOKEN_KEY = "refresh_token";
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(() => {
-    const stored = localStorage.getItem(USER_KEY);
-    return stored ? JSON.parse(stored) : null;
+    try {
+      const stored = localStorage.getItem(USER_KEY);
+      return stored ? JSON.parse(stored) : null;
+    } catch {
+      return null;
+    }
   });
   const [accessToken, setAccessToken] = useState<string | null>(() => {
     return localStorage.getItem(ACCESS_TOKEN_KEY);
@@ -59,7 +67,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         api.setToken(accessToken);
         const currentUser = await api.getProfile();
         setUser(currentUser);
-        localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+        try { localStorage.setItem(USER_KEY, JSON.stringify(currentUser)); } catch {}
       } catch (error) {
         console.error("Failed to restore session:", error);
         // Token might be expired, try to refresh
@@ -73,7 +81,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             api.setToken(tokens.accessToken);
             const currentUser = await api.getProfile();
             setUser(currentUser);
-            localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+            try { localStorage.setItem(USER_KEY, JSON.stringify(currentUser)); } catch {}
           } catch {
             // Refresh failed, clear session
             setAccessToken(null);
@@ -153,11 +161,39 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const currentUser = await api.getProfile();
       setUser(currentUser);
-      localStorage.setItem(USER_KEY, JSON.stringify(currentUser));
+      try { localStorage.setItem(USER_KEY, JSON.stringify(currentUser)); } catch {}
     } catch (error) {
       console.error("Failed to refresh user:", error);
     }
   }, [accessToken]);
+
+  // Check if user needs to select a role
+  const needsRole = !user?.role;
+
+  // Update user role (API call)
+  const updateRole = useCallback(async (role: string) => {
+    setIsLoading(true);
+    try {
+      await api.updateUser(user!.id, { role });
+      setUser(prev => prev ? { ...prev, role } : null);
+      localStorage.setItem(USER_KEY, JSON.stringify(user ? { ...user, role } : null));
+    } catch (error) {
+      console.error("Failed to update role:", error);
+      throw error;
+    } finally {
+      setIsLoading(false);
+    }
+  }, [user]);
+
+  // Switch role locally (for developer tools)
+  const navigate = useNavigate();
+  const switchRole = useCallback((role: string) => {
+    if (user) {
+      const updatedUser = { ...user, role };
+      setUser(updatedUser);
+      localStorage.setItem(USER_KEY, JSON.stringify(updatedUser));
+    }
+  }, [user]);
 
   return (
     <AuthContext.Provider
@@ -165,9 +201,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         user,
         isAuthenticated: !!user,
         isLoading,
+        needsRole,
         login,
         logout,
         refreshUser,
+        updateRole,
+        switchRole,
       }}
     >
       {children}

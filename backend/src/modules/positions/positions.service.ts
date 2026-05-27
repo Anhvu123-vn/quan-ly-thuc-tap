@@ -1,12 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { LogsService } from '../logs/logs.service';
+import { BatchesService } from '../batches/batches.service';
 
 @Injectable()
 export class PositionsService {
   constructor(
     private prisma: PrismaService,
     private logsService: LogsService,
+    private batchesService: BatchesService,
   ) {}
 
   async findAll(query: any) {
@@ -23,6 +25,23 @@ export class PositionsService {
         { title: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
       ];
+    }
+
+    // Filter positions to only show companies approved for the active batch
+    const activeBatch = await this.prisma.internshipBatch.findFirst({
+      where: { status: 'active', allowCompanyPosting: true },
+      select: { id: true },
+    });
+    if (activeBatch) {
+      // Only show positions from companies approved for this batch
+      where.batch = {
+        id: activeBatch.id,
+        companyBatches: {
+          some: {
+            status: 'approved',
+          },
+        },
+      };
     }
 
     const [positions, total] = await Promise.all([
@@ -53,9 +72,37 @@ export class PositionsService {
   }
 
   async create(dto: any, userId: string) {
-    // Create position with draft status (pending approval)
+    // Check if there is an active batch that allows company posting
+    const { can, activeBatchId } = await this.batchesService.canCompanyPost();
+    if (!can || !activeBatchId) {
+      throw new BadRequestException(
+        'Hiện không có đợt thực tập nào cho phép đăng tin tuyển dụng. Vui lòng liên hệ admin để mở đợt thực tập.',
+      );
+    }
+
+    // CORE CONSTRAINT 3: Company must be approved for this batch
+    const companyApproval = await this.prisma.companyBatch.findUnique({
+      where: { companyId_batchId: { companyId: userId, batchId: activeBatchId } },
+    });
+    if (!companyApproval) {
+      throw new BadRequestException(
+        'Công ty chưa được đăng ký tham gia đợt thực tập này. Vui lòng liên hệ admin để được xem xét.',
+      );
+    }
+    if (companyApproval.status !== 'approved') {
+      throw new BadRequestException(
+        `Công ty đang trong trạng thái "${companyApproval.status}". Vui lòng chờ admin phê duyệt.`,
+      );
+    }
+
+    // Create position with draft status (pending admin approval)
     const position = await this.prisma.position.create({
-      data: { ...dto, companyId: userId, status: 'draft' },
+      data: {
+        ...dto,
+        companyId: userId,
+        batchId: activeBatchId,
+        status: 'draft',
+      },
       include: { company: { select: { id: true, name: true } } },
     });
 
@@ -66,6 +113,7 @@ export class PositionsService {
         positionId: position.id,
         level: 'department',
         status: 'pending',
+        deadline: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000), // 7 days
       },
     });
 
@@ -93,7 +141,7 @@ export class PositionsService {
       actorRole: 'company',
       subject: `Doanh nghiệp đăng tin tuyển dụng mới: ${position.title}`,
       message: `Doanh nghiệp "${position.company.name}" đã tạo tin tuyển dụng "${position.title}" đang chờ admin duyệt.`,
-      metadata: { positionId: position.id, positionTitle: position.title, companyId: userId },
+      metadata: { positionId: position.id, positionTitle: position.title, companyId: userId, batchId: activeBatchId },
     });
 
     return { success: true, data: position, message: 'Vị trí tuyển dụng đang chờ admin duyệt' };

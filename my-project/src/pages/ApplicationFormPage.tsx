@@ -1,12 +1,14 @@
 import { useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Upload, FileText, X, Plus, CheckCircle } from "lucide-react";
+import { ArrowLeft, Upload, FileText, X, Plus, CheckCircle, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
+import { api } from "@/services/api";
+import { toast } from "sonner";
 import type { Position } from "@/types";
 
 interface ApplicationFormPageProps {
@@ -85,7 +87,7 @@ export function ApplicationFormPage({ position }: ApplicationFormPageProps) {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (documents.length === 0) {
       alert("Please upload at least your resume");
       return;
@@ -96,13 +98,27 @@ export function ApplicationFormPage({ position }: ApplicationFormPageProps) {
       return;
     }
 
+    if (!position) {
+      alert("Position information is missing");
+      return;
+    }
+
     setIsSubmitting(true);
-    
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    setIsSubmitting(false);
-    setIsSubmitted(true);
+
+    try {
+      await api.createApplication({
+        positionId: position.id,
+        coverLetter,
+        linkedIn: linkedIn.trim() || undefined,
+        portfolioUrl: portfolioUrl.trim() || undefined,
+      });
+      toast.success("Đơn ứng tuyển đã được gửi! Đang chờ giảng viên duyệt.");
+      setIsSubmitted(true);
+    } catch (err: any) {
+      alert(err?.message || "Failed to submit application. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const canProceedToStep2 = documents.length > 0;

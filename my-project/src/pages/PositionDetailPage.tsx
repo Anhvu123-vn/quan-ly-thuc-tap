@@ -95,9 +95,15 @@ export function PositionDetailPage() {
 
   const handleApply = async () => {
     if (!id) return;
-    
+
+    // Check if student can apply (batch check)
     setIsApplying(true);
     try {
+      const canApply = await api.canStudentApply();
+      if (!canApply.can) {
+        alert("Hiện không có đợt thực tập nào cho phép nộp đơn. Vui lòng đợi admin mở đợt thực tập mới.");
+        return;
+      }
       await api.createApplication({ positionId: id });
       alert("Ứng tuyển thành công!");
       // Refresh data

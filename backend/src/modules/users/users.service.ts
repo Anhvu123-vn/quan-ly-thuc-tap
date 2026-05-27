@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
 @Injectable()
@@ -81,5 +81,58 @@ export class UsersService {
   async deleteUser(id: string) {
     await this.prisma.user.delete({ where: { id } });
     return { success: true, message: 'User deleted successfully' };
+  }
+
+  async getPendingCompanies(query: any) {
+    const { page = 1, limit = 10, search } = query;
+    const skip = (page - 1) * limit;
+
+    const where: any = { role: 'company', status: 'pending' };
+    if (search) {
+      where.OR = [
+        { name: { contains: search, mode: 'insensitive' } },
+        { email: { contains: search, mode: 'insensitive' } },
+      ];
+    }
+
+    const [companies, total] = await Promise.all([
+      this.prisma.user.findMany({
+        where,
+        skip,
+        take: Number(limit),
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.user.count({ where }),
+    ]);
+
+    return {
+      success: true,
+      data: companies,
+      meta: { total, page: Number(page), limit: Number(limit), totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  async approveCompany(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('Company not found');
+    if (user.role !== 'company') throw new BadRequestException('User is not a company');
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { status: 'active' },
+    });
+    return { success: true, data: updated };
+  }
+
+  async rejectCompany(id: string) {
+    const user = await this.prisma.user.findUnique({ where: { id } });
+    if (!user) throw new NotFoundException('Company not found');
+    if (user.role !== 'company') throw new BadRequestException('User is not a company');
+
+    const updated = await this.prisma.user.update({
+      where: { id },
+      data: { status: 'rejected' },
+    });
+    return { success: true, data: updated };
   }
 }

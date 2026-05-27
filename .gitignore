@@ -1,15 +1,16 @@
 # Dependencies
 node_modules
 
-# Build outputs
-dist
-build
-*.tsbuildinfo
+# Backend & Frontend dependencies
+backend/node_modules
+my-project/node_modules
 
 # Environment files
 .env
 .env.local
 .env.*.local
+.env.production
+.env.development
 
 # IDE
 .idea
@@ -41,3 +42,7 @@ packages/*/prisma/migrations
 
 # Debug
 .node_repl_history
+
+# Database dumps
+*.dump
+*.sql.bak
